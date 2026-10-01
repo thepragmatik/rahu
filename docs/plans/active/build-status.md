@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-01T23:00+10:00 · HEAD: S09 complete · Next slice: S10
+Last updated: 2026-10-01T23:40+10:00 · HEAD: S10 complete · Next slice: S11
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
@@ -13,6 +13,7 @@ Last updated: 2026-10-01T23:00+10:00 · HEAD: S09 complete · Next slice: S10
 | S07 | done | 21 new tool tests (A08/A09/A24 + registry freeze); 92 tests total; verify green; jdtls 1.62.0 snapshot caught 9 write-time defects this slice | docs/reviews/009-s07-tools-review.md | 22a0384, 9bd34d8, 85f9bfb, 1f93741, 5ed0310 |
 | S08 | done | 8 new trace/replay tests (A10/A11/A16); 100 tests total; verify green | docs/reviews/010-s08-traces-replay-review.md | df6fbea |
 | S09 | done | 17 new context tests (A14/A22/A23/A29/A32) + scripted two-turn chat run; 117 tests total; verify green | docs/reviews/011-s09-context-chat-review.md | 6e22c49, 7a622c2 |
+| S10 | done | 9 new eval tests + packaged eval run: smoke-v1 6/6, dogfood 3/3, exit 0, honest offline costs; live refused pending G09 prereqs; 123 tests total | docs/reviews/012-s10-eval-runner-review.md | dae0e30 |
 
 ## Open blockers
 

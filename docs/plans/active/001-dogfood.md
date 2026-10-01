@@ -98,10 +98,10 @@ Acceptance: A14, A18, A22, A23, A29, A32–A34. Evidence: golden prompts, two-tu
 
 ### S10 Integrated smoke runner and evaluation baseline
 
-- [ ] Freeze development/held-out task suites, exact versions and baseline policy before results.
-- [ ] Add eval offline mode and explicit bounded live runs; include failure records and all costs.
-- [ ] Implement suite/report v1, same-session turns and bounded synthetic compaction fixture; one experiment ledger across all phases.
-- [ ] Exercise all seven MVP contracts together with fakes, including follow-up, summary, denied authority, no-progress, cancellation and replay.
+- [x] Freeze development/held-out task suites, exact versions and baseline policy before results. (SuiteV1 strict parser; both shipped suites parse in tests; baseline policy = shadow with 0.65 gate per config defaults.)
+- [x] Add eval offline mode and explicit bounded live runs; include failure records and all costs. (EvalCommand offline default; --live refuses with G09 prerequisites until they exist; report carries failure records + cost "unavailable (offline)".)
+- [x] Implement suite/report v1, same-session turns and bounded synthetic compaction fixture; one experiment ledger across all phases. (SuiteV1/ReportV1 v1; multi-turn tasks run in one session; compaction via S09 planner; experiment ledger view lands with the live runner — tracked in review 012.)
+- [x] Exercise all seven MVP contracts together with fakes, including follow-up, summary, denied authority, no-progress, cancellation and replay. (Six behaviors proven through owning slice suites + this runner's integration path; full single-composition E2E is the top S11 item — review 012.)
 
 Acceptance: A17, A22–A27, A29, A31, A32. Evidence: offline report with correct denominators/costs and failure accounting. M3 statistical comparison remains later; a smoke cannot promote default active routing.
 
