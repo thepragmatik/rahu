@@ -24,6 +24,10 @@ public final class PathBoundary {
             super(reason);
             this.reason = reason;
         }
+
+        public String reason() {
+            return reason;
+        }
     }
 
     private static final List<String> DEFAULT_EXCLUDED_NAMES = List.of(

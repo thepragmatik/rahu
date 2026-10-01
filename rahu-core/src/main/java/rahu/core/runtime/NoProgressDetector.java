@@ -1,5 +1,7 @@
 package rahu.core.runtime;
 
+import rahu.core.tools.CanonicalJson;
+
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;

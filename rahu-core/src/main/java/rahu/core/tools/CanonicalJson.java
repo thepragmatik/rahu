@@ -1,17 +1,18 @@
-package rahu.core.runtime;
+package rahu.core.tools;
 
 /**
- * Minimal deterministic JSON canonicalization for fingerprinting (sorted keys,
- * no insignificant whitespace). Core is JDK-only by architecture, so this is a
- * small local parser, not a JSON library dependency. Accepts RFC 8259 JSON;
- * malformed input returns the raw string (still deterministic).
+ * Deterministic JSON canonicalization (sorted keys, no insignificant whitespace)
+ * shared by the no-progress fingerprinter and tool-call dedup. Core is JDK-only
+ * by architecture, so this is a small local parser, not a JSON library
+ * dependency. Accepts RFC 8259 JSON; malformed input returns the raw string
+ * (still deterministic).
  */
-final class CanonicalJson {
+public final class CanonicalJson {
 
     private CanonicalJson() {
     }
 
-    static String canonicalize(String json) {
+    public static String canonicalize(String json) {
         if (json == null) {
             return "";
         }
