@@ -11,7 +11,8 @@ import rahu.core.ReasoningPolicy;
 
 /**
  * Constructs the legal candidate set (routing.md candidate generation). IDs are
- * alias@policy, stable and order-independent; sets are never silently truncated.
+ * alias@policy, stable and order-independent; oversized sets are an explicit
+ * error, never a silent truncation.
  */
 public final class CandidateFactory {
 
@@ -68,7 +69,7 @@ public final class CandidateFactory {
         OperationRequirements req) {
 
         if (isNoReasoning(policy) && profile != null && profile.mandatoryReasoning()) {
-            return "mandatory-reasoning";
+            return "mandatory-reasoning"; // A04: none/disabled cannot override evidence
         }
         if (profile == null || !profile.evidenceFresh()
             || profile.inputPrice().isEmpty() || profile.outputPrice().isEmpty()) {
