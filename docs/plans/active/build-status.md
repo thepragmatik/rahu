@@ -1,12 +1,14 @@
 # Build status
 
-Last updated: 2026-10-01T17:30+10:00 · HEAD: S03 · Next slice: S04
+Last updated: 2026-10-01T18:00+10:00 · HEAD: S05 (M1 complete) · Next slice: S06
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
 | S01 | done | `./mvnw verify` BUILD SUCCESS (4 modules); core tests 4/4; `./bin/rahu demo` exit 0 (stdout answer, stderr footer, JSONL trace); javap major version 71 (Java 27 preview agreement) | docs/reviews/004-s01-build-review.md | 264c670 |
 | S02 | done | core tests 17/17 (candidate exclusions A04/A05, routing table A03/A06/A07, 200-trial invariant sweep); `./mvnw verify` BUILD SUCCESS | docs/reviews/005-s02-routing-review.md | 036ba39 |
-| S03 | done | cli tests 10/10; packaged `config validate`/`route inspect`/exit-2 error paths verified against examples/offline.json; `./mvnw verify` BUILD SUCCESS (27 tests) | docs/reviews/006-s03-config-cli-review.md | S03 commit |
+| S03 | done | cli tests 10/10; packaged `config validate`/`route inspect`/exit-2 error paths verified against examples/offline.json; `./mvnw verify` BUILD SUCCESS (27 tests) | docs/reviews/006-s03-config-cli-review.md | ad9ddc0 |
+| S04 | done | openrouter tests 7/7 (request mapping, effort/Disabled, tools, ordered calls + continuation capture, usage unknown-not-zero, length-incomplete, 401/429 typed) | (folded into build-status; S04 review in S05 review evidence) | 5865f38 |
+| S05 | done | systemone tests 7/7 (envelope shape, probabilities+raw confidence, invalid label rejected, malformed/NaN typed, noul bounds, 500/429, truncated rejected); 38 tests total | docs/reviews/007-s05-systemone-review.md | 1e4c73a |
 
 ## Open blockers
 
