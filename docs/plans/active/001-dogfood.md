@@ -16,10 +16,10 @@ Acceptance: A01, A19, A28. Evidence: clean-checkout verify command and demo resu
 
 ### S02 Feasibility and route resolution
 
-- [ ] Write failing pool/effort/context/provider tests and generated invariant tests.
-- [ ] Implement profile evidence, candidate IDs/order, exclusions, baseline/fallback resolution.
-- [ ] Validate distributions and distinguish provider confidence from chosen probability.
-- [ ] Implement shadow and active resolution with bounded uncertainty behavior.
+- [x] Write failing pool/effort/context/provider tests and generated invariant tests.
+- [x] Implement profile evidence, candidate IDs/order, exclusions, baseline/fallback resolution.
+- [x] Validate distributions and distinguish provider confidence from chosen probability. (chosen_probability gate 0.65; raw confidence carried separately; distribution sum/maximal-label validation with 0.0001 tolerance)
+- [x] Implement shadow and active resolution with bounded uncertainty behavior. (shadow executes baseline + records suggestion; active degraded decision uses configured fallback; neither feasible terminates NO_FEASIBLE_ROUTE)
 
 Acceptance: A03–A07. Evidence: synthetic catalog/property results and inspect output. Test omitted/null/mandatory reasoning metadata explicitly.
 
