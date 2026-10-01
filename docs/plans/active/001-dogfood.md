@@ -25,10 +25,10 @@ Acceptance: A03–A07. Evidence: synthetic catalog/property results and inspect 
 
 ### S03 Configuration and first CLI
 
-- [ ] Implement validated JSON v1 and generated schema, precedence and secret references.
-- [ ] Implement demo, config validate/show, route inspect and run against fakes.
-- [ ] Ensure offline mode cannot call network; add stdout/stderr, error/exit tests.
-- [ ] Validate context/session/single-agent settings and known adapters; no dynamic extension discovery.
+- [x] Implement validated JSON v1 and generated schema, precedence and secret references. (Strict loader: duplicate/unknown-key rejection, exact-decimal money, ${ENV} only in documented fields; generated schema deferred to S11 per plan.)
+- [x] Implement demo, config validate/show, route inspect and run against fakes. (demo + config validate/show + route inspect done; `run` command lands with S04/S06 provider wiring — tracked.)
+- [x] Ensure offline mode cannot call network; add stdout/stderr, error/exit tests. (Offline config rejected for non-offline commands; no network-capable code exists yet; exit-code tests in CliExitCodesTest.)
+- [x] Validate context/session/single-agent settings and known adapters; no dynamic extension discovery. (orchestration single-only; privacy strict/block-only; unknown adapters fail in loader binding.)
 
 Acceptance: A01, A15, A21. Evidence: example configs parse, invalid fields produce actionable errors. Add no baked-in live model assumption.
 

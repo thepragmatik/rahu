@@ -1,11 +1,12 @@
 # Build status
 
-Last updated: 2026-10-01T17:05+10:00 · HEAD: S02 · Next slice: S03
+Last updated: 2026-10-01T17:30+10:00 · HEAD: S03 · Next slice: S04
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
 | S01 | done | `./mvnw verify` BUILD SUCCESS (4 modules); core tests 4/4; `./bin/rahu demo` exit 0 (stdout answer, stderr footer, JSONL trace); javap major version 71 (Java 27 preview agreement) | docs/reviews/004-s01-build-review.md | 264c670 |
 | S02 | done | core tests 17/17 (candidate exclusions A04/A05, routing table A03/A06/A07, 200-trial invariant sweep); `./mvnw verify` BUILD SUCCESS | docs/reviews/005-s02-routing-review.md | 036ba39 |
+| S03 | done | cli tests 10/10; packaged `config validate`/`route inspect`/exit-2 error paths verified against examples/offline.json; `./mvnw verify` BUILD SUCCESS (27 tests) | docs/reviews/006-s03-config-cli-review.md | S03 commit |
 
 ## Open blockers
 
