@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-01T18:00+10:00 · HEAD: S05 (M1 complete) · Next slice: S06
+Last updated: 2026-10-01T19:30+10:00 · HEAD: S06 complete · Next slice: S07
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
@@ -9,6 +9,7 @@ Last updated: 2026-10-01T18:00+10:00 · HEAD: S05 (M1 complete) · Next slice: S
 | S03 | done | cli tests 10/10; packaged `config validate`/`route inspect`/exit-2 error paths verified against examples/offline.json; `./mvnw verify` BUILD SUCCESS (27 tests) | docs/reviews/006-s03-config-cli-review.md | ad9ddc0 |
 | S04 | done | openrouter tests 7/7 (request mapping, effort/Disabled, tools, ordered calls + continuation capture, usage unknown-not-zero, length-incomplete, 401/429 typed) | (folded into build-status; S04 review in S05 review evidence) | 5865f38 |
 | S05 | done | systemone tests 7/7 (envelope shape, probabilities+raw confidence, invalid label rejected, malformed/NaN typed, noul bounds, 500/429, truncated rejected); 38 tests total | docs/reviews/007-s05-systemone-review.md | 1e4c73a |
+| S06 | done | 30 new runtime/privacy/authority tests (A12/A13/A24/A25/A27/A33/A34); 76 tests total; verify green | docs/reviews/008-s06-runtime-privacy-review.md | f97d4d9, 8f62289, ce29b13, e7c346b |
 
 ## Open blockers
 

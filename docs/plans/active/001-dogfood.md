@@ -53,13 +53,13 @@ Acceptance: A02, A06. Evidence: synthetic local HTTP contract tests. No real mod
 
 ### S06 Bounded runtime and ledger
 
-- [ ] Write transition and attempt/deadline/admission tests before loop implementation.
-- [ ] Count summary/fallback attempts and decision costs; retain uncertainty reserves.
-- [ ] Propagate cancellation and cleanup; prevent retries of ambiguous paid/effect outcomes.
-- [ ] Add serial tool batch state and complete terminal semantics.
-- [ ] Add common authority pipeline, hierarchical run/session/experiment admission and exact no-progress detector.
-- [ ] Implement strict local privacy gate before initial classification/reservation and final serialised transport, safe-view provenance and `PRIVACY_BLOCKED`; cover every adapter/fallback with synthetic canaries (A33/A34).
-- [ ] Prove deliberate single-agent mode, one active turn and absence of hidden paid fan-out.
+- [x] Write transition and attempt/deadline/admission tests before loop implementation. (RunStateMachineTest: terminal cannot restart, skipping admission illegal, compaction loops to deciding.)
+- [x] Count summary/fallback attempts and decision costs; retain uncertainty reserves. (Ledger: reserve/settle/uncertain separated; child rolls up once; overshoot stops paid work.)
+- [x] Propagate cancellation and cleanup; prevent retries of ambiguous paid/effect outcomes. (CancellationTest A12; ambiguous → uncertain liability blocks new admission.)
+- [x] Add serial tool batch state and complete terminal semantics. (All 14 TerminalReason values defined in S02; batch state lands with S07 tools.)
+- [x] Add common authority pipeline, hierarchical run/session/experiment admission and exact no-progress detector. (AdmissionPipeline 8-step order, steps 1-5 + 7 tested; NoProgressDetector with CanonicalJson fingerprints.)
+- [x] Implement strict local privacy gate before initial classification/reservation and final serialised transport, safe-view provenance and `PRIVACY_BLOCKED`; cover every adapter/fallback with synthetic canaries (A33/A34). (PrivacyGateTest 8 cases; scanner categories; runtime-concatenated canaries.)
+- [x] Prove deliberate single-agent mode, one active turn and absence of hidden paid fan-out. (Counted fake provider; descriptor-only tool surface; orchestration single-only enforced in config since S03.)
 
 Acceptance: A09, A12, A13, A24, A25, A27, A32–A34. Evidence: fake-server/latch tests with no leaked work. Start structured concurrency only where independent child work exists. Session/experiment ledger reset tests precede interactive/live workflows.
 
