@@ -1,0 +1,36 @@
+{
+  "schemaVersion": 1,
+  "mode": "offline",
+  "decision": {
+    "adapter": "fake",
+    "model": "demo-decision"
+  },
+  "generation": {
+    "adapter": "fake"
+  },
+  "routing": {
+    "mode": "shadow",
+    "pool": "demo",
+    "baseline": "fast@low",
+    "fallback": "quality@medium",
+    "confidenceField": "chosen_probability",
+    "confidenceFloor": 0.65
+  },
+  "pools": {
+    "demo": {
+      "models": [
+        {"alias": "fast", "id": "demo-fast", "reasoning": ["low", "medium"]},
+        {"alias": "quality", "id": "demo-quality", "reasoning": ["medium", "high"]}
+      ]
+    }
+  },
+  "tools": {
+    "root": ".",
+    "enabled": ["workspace.list", "workspace.read", "workspace.search"]
+  },
+  "trace": {
+    "directory": ".rahu/runs",
+    "capture": "metadata",
+    "onFailure": "stop"
+  }
+}

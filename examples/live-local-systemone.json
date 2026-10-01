@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "mode": "live",
+  "decision": {
+    "adapter": "system-one-http",
+    "baseUrl": "http://127.0.0.1:8000",
+    "compatibilityProfile": "jev-compatible-v1",
+    "model": "${RAHU_DECISION_MODEL}",
+    "timeoutMillis": 5000
+  },
+  "generation": {
+    "adapter": "openrouter",
+    "baseUrl": "https://openrouter.ai/api/v1",
+    "apiKeyEnv": "OPENROUTER_API_KEY",
+    "requireParameters": true
+  },
+  "routing": {
+    "mode": "shadow",
+    "pool": "development",
+    "baseline": "quality@medium",
+    "fallback": "quality@medium",
+    "confidenceField": "chosen_probability",
+    "confidenceFloor": 0.65,
+    "maximumCandidates": 32
+  },
+  "pools": {
+    "development": {
+      "models": [
+        {"alias": "fast", "id": "${RAHU_FAST_MODEL}", "reasoning": ["low", "medium"]},
+        {"alias": "quality", "id": "${RAHU_QUALITY_MODEL}", "reasoning": ["medium", "high"]}
+      ]
+    }
+  },
+  "agent": {
+    "maxGenerationAttempts": 8,
+    "deadlineSeconds": 180,
+    "maxCostUsd": "1.00",
+    "maxCompletionTokens": 4096,
+    "maxCompactions": 2
+  },
+  "catalog": {
+    "cacheTtlSeconds": 86400,
+    "allowStale": false
+  },
+  "tools": {
+    "root": ".",
+    "enabled": ["workspace.list", "workspace.read", "workspace.search"],
+    "maxCallsPerStep": 8,
+    "resultBytes": 65536
+  },
+  "trace": {
+    "directory": ".rahu/runs",
+    "capture": "metadata",
+    "onFailure": "stop"
+  }
+}
