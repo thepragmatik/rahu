@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-01T21:20+10:00 · HEAD: S07 complete · Next slice: S08
+Last updated: 2026-10-01T22:10+10:00 · HEAD: S08 complete · Next slice: S09
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
@@ -11,6 +11,7 @@ Last updated: 2026-10-01T21:20+10:00 · HEAD: S07 complete · Next slice: S08
 | S05 | done | systemone tests 7/7 (envelope shape, probabilities+raw confidence, invalid label rejected, malformed/NaN typed, noul bounds, 500/429, truncated rejected); 38 tests total | docs/reviews/007-s05-systemone-review.md | 1e4c73a |
 | S06 | done | 30 new runtime/privacy/authority tests (A12/A13/A24/A25/A27/A33/A34); 76 tests total; verify green | docs/reviews/008-s06-runtime-privacy-review.md | f97d4d9, 8f62289, ce29b13, e7c346b |
 | S07 | done | 21 new tool tests (A08/A09/A24 + registry freeze); 92 tests total; verify green; jdtls 1.62.0 snapshot caught 9 write-time defects this slice | docs/reviews/009-s07-tools-review.md | 22a0384, 9bd34d8, 85f9bfb, 1f93741, 5ed0310 |
+| S08 | done | 8 new trace/replay tests (A10/A11/A16); 100 tests total; verify green | docs/reviews/010-s08-traces-replay-review.md | df6fbea |
 
 ## Open blockers
 

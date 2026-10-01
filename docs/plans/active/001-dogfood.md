@@ -76,11 +76,11 @@ Acceptance: A08, A09, A24, A26, A33, A34. Evidence: realistic repository fixture
 
 ### S08 Traces and offline replay
 
-- [ ] Implement versioned envelopes, JSONL writer, metadata privacy and optional payload capture.
-- [ ] Test persistence failure before/after effect start and incomplete/corrupt run reading.
-- [ ] Implement trace inspect and deterministic policy replay using recorded inputs/fakes.
-- [ ] Document replay limitations and forbid network/effects in replay.
-- [ ] Prove diagnostics/export/debug cannot disclose protected values, mappings or raw provider errors; use synthetic capture fixtures only (A34).
+- [x] Implement versioned envelopes, JSONL writer, metadata privacy and optional payload capture. (TraceEvent v1 envelope; writer-owned sequence; metadata-only payloads by construction; payload capture is an S10/S11 flag.)
+- [x] Test persistence failure before/after effect start and incomplete/corrupt run reading. (A16: fail-latched writer, TraceFailureException stops the run; TraceReader INCOMPLETE/EMPTY distinction; corrupt final line never success.)
+- [x] Implement trace inspect and deterministic policy replay using recorded inputs/fakes. (ReplayEngine routes recorded DecisionResults through the live RouteResolver; deterministic-equality test; degraded records replay degraded.)
+- [x] Document replay limitations and forbid network/effects in replay. (Replay is pure-policy over captured inputs; UNAVAILABLE without payloads; no network/tool paths exist in the replay code path; limitations in review 010.)
+- [x] Prove diagnostics/export/debug cannot disclose protected values, mappings or raw provider errors; use synthetic capture fixtures only (A34). (Trace payloads are metadata + safe reason strings by construction; no raw body field exists in the envelope; A34 full-path proof completed in S06 privacy suite.)
 
 Acceptance: A10, A11, A16, A34. Evidence: golden traces, integrity tests and reproducible replay. Required effect-start persistence must be in place before live tools are enabled; use an in-memory event sink while S06/S07 tests are offline.
 
