@@ -1,0 +1,19 @@
+{
+  "model": "demo-decision",
+  "answers": {
+    "route": {
+      "type": "choice",
+      "choice": "fast@low",
+      "probabilities": {"fast@low": 0.8, "quality@medium": 0.2},
+      "confidence": 0.6
+    },
+    "read_relevant": {"type": "noul", "noul": 0.9},
+    "compaction": {
+      "type": "choice",
+      "choice": "concise",
+      "probabilities": {"defer": 0.1, "concise": 0.8, "detailed": 0.1},
+      "confidence": 0.7
+    }
+  },
+  "usage": {"input_tokens": 240, "output_tokens": 80}
+}
