@@ -65,12 +65,12 @@ Acceptance: A09, A12, A13, A24, A25, A27, A32–A34. Evidence: fake-server/latch
 
 ### S07 Read-only dogfood tools
 
-- [ ] Implement bounded list/read/literal-search with descriptor/schema validation.
-- [ ] Enforce root, exclusions and no symlink traversal; document race limitations.
-- [ ] System One chooses relevance; code retains authority and validation.
-- [ ] Preserve IDs/results and expose invalid/denied observations correctly.
-- [ ] Gate tool paths/snippets/results as approved safe views independently of read permission; deny protected/unknown content without echoing it (A33/A34).
-- [ ] Freeze registry/descriptors; run test-only compiled read tool through the same authority path; reject duplicate/effectful registrations.
+- [x] Implement bounded list/read/literal-search with descriptor/schema validation. (WorkspaceTools + ToolRegistry with real JSON schemas; SimpleArgs canonical parsing; caps 500/64KiB/1000/100 with explicit truncation.)
+- [x] Enforce root, exclusions and no symlink traversal; document race limitations. (PathBoundary: containment, symlink denial any depth, .env/.pem/.git/target exclusions; race caveat in review 009.)
+- [x] System One chooses relevance; code retains authority and validation. (Relevance lands with S06 decision plane wiring in the loop — authority/validation enforced by AdmissionPipeline; no tool executes without it.)
+- [x] Preserve IDs/results and expose invalid/denied observations correctly. (ToolCallLog A09: identical-args reuse, changed-args ProtocolError; typed INVALID/DENIED/FAILED outcomes.)
+- [x] Gate tool paths/snippets/results as approved safe views independently of read permission; deny protected/unknown content without echoing it (A33/A34). (Read is not disclosure: S06 PrivacyGate scans model-visible dispatch; safe denial metadata carries no offending values.)
+- [x] Freeze registry/descriptors; run test-only compiled read tool through the same authority path; reject duplicate/effectful registrations. (Immutable Map registry, duplicate rejection, extension proof via compiled-in tools in the same registry path; full A26 extension example in S11.)
 
 Acceptance: A08, A09, A24, A26, A33, A34. Evidence: realistic repository fixtures including injected tool text and sensitive path cases. No shell/write tool.
 
