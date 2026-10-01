@@ -19,3 +19,7 @@ target/
 *.iml
 .DS_Store
 dependency-reduced-pom.xml
+.classpath
+.project
+.settings/
+bin/
