@@ -2,7 +2,28 @@
 
 Rahu is a Java agent harness with a separately configurable System One decision plane. It selects legal execution candidates that combine a generation model, reasoning effort, and provider policy. Java code owns the agent loop, budgets, tool authority, and observability.
 
-**Status:** specification foundation. No runtime, build, benchmark result, or model-quality guarantee exists yet. This repository is the handoff for the implementation session.
+**Status:** dogfood-alpha implementation (S01–S10 complete, S11 packaging). The CLI builds, 128 tests pass offline, and the read-only product surface (demo, config, route inspect, chat, eval, traces) works. No live-model dogfood or benchmark claim yet — G09 live verification is a separate gate.
+
+## Quickstart (offline, no keys needed)
+
+Requirements: JDK 27 (`export JAVA_HOME=/path/to/jdk27`), network once for Maven dependencies.
+
+```bash
+./mvnw verify          # build + all offline tests
+./bin/rahu demo        # deterministic offline run; answer on stdout, trace under .rahu/runs/
+./bin/rahu config validate --config examples/offline.json
+./bin/rahu route inspect --config examples/offline.json --prompt "Explain the planned modules"
+./bin/rahu eval --suite docs/evals/suites/smoke-v1.json --config examples/offline.json
+```
+
+## Quickstart (live, OpenRouter + local decision service)
+
+1. `cp .env.example .env` and fill `OPENROUTER_API_KEY` (gitignored; loaded at startup — a real shell export overrides it).
+2. Point `config.local.json` (copy from `examples/live-local-systemone.json`) at your decision service and model pool. A ready pool of cheap models ships in `config.local.json` (Mistral Nemo, Qwen3-30B-A3B, gpt-oss-20b, Granite micro — all under $0.05/1M input tokens).
+3. Validate without billing: `./bin/rahu config validate --config config.local.json` (add `--live-check` for catalog checks).
+4. Chat (bounded by `session.maxCostUsd`): `./bin/rahu chat --config config.local.json`.
+
+Privacy: `privacy.mode=strict` blocks unknown/provenance-unclear content before any model call; see [docs/specs/privacy.md](docs/specs/privacy.md). Live execution of eval requires explicit `--live --max-cost-usd` and G09 prerequisites.
 
 ## Start here
 
