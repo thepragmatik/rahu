@@ -387,10 +387,11 @@ public final class ConfigLoader {
                 throw new ConfigError("${ENV} interpolation is not allowed in \"" + fieldPath
                     + "\"; only model IDs, decision.model and credential references");
             }
-            String resolved = System.getenv(name);
+            String resolved = DotEnv.get(name).orElse(null);
             if (resolved == null) {
                 throw new ConfigError("environment variable " + name
-                    + " referenced by " + fieldPath + " is not set; export it or hardcode a value");
+                    + " referenced by " + fieldPath
+                    + " is not set; export it or add it to .env (gitignored)");
             }
             m.appendReplacement(out, Matcher.quoteReplacement(resolved));
         }

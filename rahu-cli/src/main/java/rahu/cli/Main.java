@@ -16,6 +16,8 @@ import picocli.CommandLine.Command;
 public final class Main {
 
     public static void main(String[] args) {
+        // .env (gitignored) is the local key source; real environment wins.
+        rahu.cli.config.DotEnv.load(java.nio.file.Path.of("."));
         int exitCode = new CommandLine(new Main()).execute(args);
         System.exit(exitCode);
     }
