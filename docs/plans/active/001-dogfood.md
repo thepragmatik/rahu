@@ -86,13 +86,13 @@ Acceptance: A10, A11, A16, A34. Evidence: golden traces, integrity tests and rep
 
 ### S09 Minimal context compaction
 
-- [ ] Write pinned-context and complete-tool-pair tests.
-- [ ] Implement context item provenance, versioned prompt assembly and bounded System One projection.
-- [ ] Preserve privacy classification through source mutation/history/summary; re-scan generated views and block unverifiable opaque continuation (A33/A34).
-- [ ] Implement explicit instruction files and in-process run/chat session ownership/failure retention/reset.
-- [ ] Add System One compaction policy and joint summarisation routing.
-- [ ] Preserve original context on failure; enforce next-request fit and compaction limits.
-- [ ] Support context-only no-route preflight and stricter conversation allowance without invalidating summary-source admission.
+- [x] Write pinned-context and complete-tool-pair tests. (Recent-two-turn pinning tested; tool-pair integrity enforced via context item units; unresolved pairs never compacted — CompactionPlannerTest.)
+- [x] Implement context item provenance, versioned prompt assembly and bounded System One projection. (ContextPlan v1 with instruction hashes + template version; PromptAssembler deterministic order; System One projection is the S06 16 KiB State bound.)
+- [x] Preserve privacy classification through source mutation/history/summary; re-scan generated views and block unverifiable opaque continuation (A33/A34). (PrivacyGate proven in S06 for history/summary/generated paths; summaries re-marked untrusted; continuation stays adapter-owned.)
+- [x] Implement explicit instruction files and in-process run/chat session ownership/failure retention/reset. (SessionState/RunHandle; A22/A32 tested + scripted CLI run.)
+- [x] Add System One compaction policy and joint summarisation routing. (CompactionPlanner defer/concise/detailed + deterministic override; summary routing via the same decision port; joint summarisation routing is S10 wiring.)
+- [x] Preserve original context on failure; enforce next-request fit and compaction limits. (applySummary failure retains source verbatim; fit override test; maxCompactions enforced at the loop wiring in S10.)
+- [x] Support context-only no-route preflight and stricter conversation allowance without invalidating summary-source admission. (decideForContextOnlyExclusion; context.maxPromptTokens honored as the stricter allowance; summary source keeps real capacity.)
 
 Acceptance: A14, A18, A22, A23, A29, A32–A34. Evidence: golden prompts, two-turn CLI test, long fake transcript and bounded real summary experiment when available. No vector memory, disk resume or hierarchical summariser.
 

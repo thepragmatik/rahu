@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-01T22:10+10:00 · HEAD: S08 complete · Next slice: S09
+Last updated: 2026-10-01T23:00+10:00 · HEAD: S09 complete · Next slice: S10
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
@@ -12,6 +12,7 @@ Last updated: 2026-10-01T22:10+10:00 · HEAD: S08 complete · Next slice: S09
 | S06 | done | 30 new runtime/privacy/authority tests (A12/A13/A24/A25/A27/A33/A34); 76 tests total; verify green | docs/reviews/008-s06-runtime-privacy-review.md | f97d4d9, 8f62289, ce29b13, e7c346b |
 | S07 | done | 21 new tool tests (A08/A09/A24 + registry freeze); 92 tests total; verify green; jdtls 1.62.0 snapshot caught 9 write-time defects this slice | docs/reviews/009-s07-tools-review.md | 22a0384, 9bd34d8, 85f9bfb, 1f93741, 5ed0310 |
 | S08 | done | 8 new trace/replay tests (A10/A11/A16); 100 tests total; verify green | docs/reviews/010-s08-traces-replay-review.md | df6fbea |
+| S09 | done | 17 new context tests (A14/A22/A23/A29/A32) + scripted two-turn chat run; 117 tests total; verify green | docs/reviews/011-s09-context-chat-review.md | 6e22c49, 7a622c2 |
 
 ## Open blockers
 
