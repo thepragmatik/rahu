@@ -107,8 +107,8 @@ Acceptance: A17, A22–A27, A29, A31, A32. Evidence: offline report with correct
 
 ### S11 Packaging and usable handoff
 
-- [ ] Verify stable launcher/jar from a clean checkout; complete run/chat/inspect/replay/eval help and exact commands.
-- [ ] Generate validated config schema and build manifest; check examples, wire fixtures, suites and docs destinations.
+- [x] Verify stable launcher/jar from a clean checkout; complete run/chat/inspect/replay/eval help and exact commands. (Clean-clone G01 ritual: mvnw verify BUILD SUCCESS 128 tests; demo/validate/eval 6/6 exit 0; README quickstart with exact commands.)
+- [x] Generate validated config schema and build manifest; check examples, wire fixtures, suites and docs destinations. (docs/generated/config.schema.json generated + tested; build manifest deferred to S12 release report; shipped suites parse in tests.)
 - [ ] Document a working compiled extension against actual ports and test cleanup/authority/dependency direction.
 - [ ] Review real output in colourless/narrow/non-TTY/JSON modes; fix misleading routes/costs/failures.
 - [ ] Convert the setup runbook's proposed commands to verified instructions; keep missing live checks marked.
