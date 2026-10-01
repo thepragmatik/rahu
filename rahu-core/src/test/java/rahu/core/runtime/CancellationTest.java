@@ -59,6 +59,8 @@ class CancellationTest {
         };
 
         var run = new RunStateMachine();
+        run.transitionTo(RunPhase.DECIDING);
+        run.transitionTo(RunPhase.ADMITTED);
         var ledger = new Ledger(new MoneyAmount(new BigDecimal("1.00"), CurrencyUnit.USD));
         var pipeline = new rahu.core.authority.AdmissionPipeline(run, ledger,
             new PrivacyGate());
