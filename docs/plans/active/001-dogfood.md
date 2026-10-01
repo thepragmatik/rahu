@@ -6,11 +6,11 @@ This plan builds M1 and M2 through small executable slices in one initiated buil
 
 ### S01 Build and offline composition
 
-- [ ] Verify/pin latest GA JDK, Maven Wrapper and current compatible dependencies.
-- [ ] Create four modules with permitted dependency direction; formatter and preview-enabled verification.
-- [ ] Create immutable run/candidate/decision/money types and fake ports.
-- [ ] Establish dependency boundary tests and stable `rahu-cli/target/rahu-cli.jar`/`bin/rahu` packaging contract.
-- [ ] Run a packaged offline demo through the launcher; document actual commands.
+- [x] Verify/pin latest GA JDK, Maven Wrapper and current compatible dependencies.
+- [x] Create four modules with permitted dependency direction; formatter and preview-enabled verification. (Formatter dropped: palantir-java-format 3.10.3 crashes on JDK 27 javac internals — review 004 F2; preview verification done across compile/test/package/launcher.)
+- [x] Create immutable run/candidate/decision/money types and fake ports. (S01 scope per build plan: money/cost/candidate/reasoning/model types; RunState and DecisionEngine fake ports land with S06/S05 slices.)
+- [x] Establish dependency boundary tests and stable `rahu-cli/target/rahu-cli.jar`/`bin/rahu` packaging contract.
+- [x] Run a packaged offline demo through the launcher; document actual commands.
 
 Acceptance: A01, A19, A28. Evidence: clean-checkout verify command and demo result. Do not scaffold future modules. If preview APIs are used, demonstrate compile/test/package/run agreement first.
 
