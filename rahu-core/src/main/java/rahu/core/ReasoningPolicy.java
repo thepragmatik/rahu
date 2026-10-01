@@ -18,10 +18,17 @@ public sealed interface ReasoningPolicy permits ReasoningPolicy.ProviderDefault,
         public ExplicitEffort {
             Objects.requireNonNull(effort, "effort");
         }
+
+        /** Named factory for readable construction in configs/tests. */
+        public static ExplicitEffort of(Effort effort) {
+            return new ExplicitEffort(effort);
+        }
     }
 
     /** Request disabled reasoning (distinct from provider default). */
     record Disabled() implements ReasoningPolicy {
+
+        public static final Disabled INSTANCE = new Disabled();
     }
 
     /** Effort vocabulary v1 (routing.md). */

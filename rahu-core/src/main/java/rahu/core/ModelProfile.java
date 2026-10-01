@@ -18,7 +18,8 @@ public record ModelProfile(
     ReasoningPolicy.Effort[] supportedEfforts,
     boolean mandatoryReasoning,
     Instant fetchedAt,
-    boolean evidenceFresh) {
+    boolean evidenceFresh,
+    boolean toolSupport) {
 
     public ModelProfile {
         Objects.requireNonNull(model, "model");
