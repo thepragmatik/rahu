@@ -4,6 +4,8 @@
 
 Append JSONL records with `schemaVersion=1`, `runId`, monotonic per-run `sequence`, UTC `timestamp`, elapsed monotonic milliseconds, `type`, `operationId`, optional parent-operation ID and bounded payload. Events are immutable. Sequence is assigned by one run writer. Include version/config/catalog hashes in `RunStarted`.
 
+`RunStarted` also includes session ID/turn index and optional experiment ID. Ledger events distinguish run/session/experiment allowance views and one reservation ID; totals are reported once at the owning level. Terminal records include no-progress fingerprints/counts when relevant, context/template/projection hashes and session aggregate status. Memory-only chat does not imply a persisted resumable session or global sequence across runs.
+
 Events: `RunStarted`, `DecisionRequested`, `DecisionCompleted`, `DecisionFailed`, `RouteResolved`, `AdmissionReserved`, `ModelRequested`, `ModelCompleted`, `ModelFailed`, `ToolProposed`, `ToolDenied`, `ToolStarted`, `ToolCompleted`, `ToolFailed`, `ContextCompacted`, `CostReconciled`, `RunTerminated`. Schema-versioned payload definitions and golden fixtures are implemented in S08. New fields may be additive; incompatible meaning needs a version change.
 
 ## Required payloads

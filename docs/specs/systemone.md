@@ -35,6 +35,10 @@ Support explicit `jev-compatible-v1` and, where evidence demands, server-specifi
 
 Core normalised result: question ID, result kind/value, optional label probabilities, optional raw provider confidence plus semantics identifier, chosen probability, observed model, usage, server-reported compute time, measured HTTP duration, and protocol/profile revision. Missing probabilities are explicit and invoke routing fallback; Boolean/Score can be advisory without a complete choice distribution.
 
+The verified envelope/profile and independently authored synthetic shape examples are specified in [artifacts.md](artifacts.md) and [contract fixtures](../../examples/contracts/systemone/README.md). A response `model` may echo the requested alias; store it as reported identity with evidence, not proof of the served checkpoint. Exact checkpoint remains unavailable unless independently supplied/verifiable server metadata establishes it.
+
+Classification failure gives `unknown` and cannot lower trusted requirements. Tool relevance uses `noul` probability: include an allowed tool at probability at least 0.5; a failed/missing judgment exposes the permitted read-only set with a degraded marker. No probability grants permission. Compaction-policy failure defaults to concise if compaction is feasible/required; otherwise defer or stop by deterministic fit. Summary route follows ordinary confidence/fallback rules. Every fallback cause is traced.
+
 ## Validation and failure handling
 
 Require all requested answers, correct types and finite numerical values. Choice membership and distribution checks follow routing. Reject unexpected labels or answer kinds, duplicate JSON keys and malformed envelopes. Unknown additive vendor fields may be retained in bounded raw metadata without affecting authority. Do not substitute an arbitrary parser repair LLM.
@@ -42,6 +46,8 @@ Require all requested answers, correct types and finite numerical values. Choice
 Defaults: connect timeout 3 seconds, total decision timeout 5 seconds, maximum response 1 MiB, bounded state 16 KiB UTF-8 plus trusted question overhead. Oversized state triggers an explicit bounded feature projection or typed input-too-large error, never silent byte slicing. Projection records omitted segments and is versioned; it cannot replace full context for generation.
 
 No decision retry by default; fallback is usually cheaper. An explicit retry limit of one may handle a definitive pre-execution 429/503 within remaining deadline, respecting bounded Retry-After. Cancellation must interrupt HTTP/body reads. Uncertain transport outcomes remain traceable even if the decision service is nominally side-effect-free because billing may have occurred.
+
+Decision admission uses explicit service cost policy/pricing, independent of the generation catalog. Local-unbilled mode requires an explicitly operated loopback service; hosted tariffs must be known before requests. Measure local compute separately in evaluations. If choice/probability response metadata cannot provide an exact served checkpoint, trace it unavailable rather than treating an echoed model alias as identity proof.
 
 ## Real service requirement
 

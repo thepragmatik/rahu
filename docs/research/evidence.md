@@ -6,13 +6,17 @@ Reviewed on 1 October 2026. This is a bounded evidence map, not a claim to have 
 
 [Anthropic Building effective agents](https://www.anthropic.com/engineering/building-effective-agents) advocates simple composable patterns and increasing complexity when it provides value. Rahu applies that guidance through a small owned loop and deferred orchestration. This does not prove that custom Java code outperforms frameworks. Compare lifecycle transparency and maintenance cost as the implementation grows.
 
+[Harness Engineering source-code study](https://arxiv.org/html/2609.00006v1#S2.SS3), section 2.3/table 1, supplies the seven-area taxonomy used in [Rahu's coverage map](../harness-subsystems.md). It explicitly permits a minimal single-agent position with no orchestration. The taxonomy motivates an explicit MVP contract for each area; it is not a universal maturity checklist or evidence that all maximal forms belong in alpha. The survey's production-code observations are scoped to its corpus, not a prohibition on frameworks or vector retrieval elsewhere.
+
+[OpenAI harness engineering](https://openai.com/index/harness-engineering/) describes repository knowledge as the source of record with a concise agent entry point and progressively disclosed docs. Rahu uses a linked map, executable acceptance gates and checked progress rather than requiring every spec in every context. Its reported productivity experience is not a guarantee of a one-session Rahu build; completion still depends on environment, services and evidence.
+
 ## System One models
 
 [Laya upstream](https://github.com/LeonaDavinci/laya-system-one) describes typed non-autoregressive decisions and an HTTP `/v1/systemone` service. Its different checkpoints and automatic internal routing mean the requested alias alone may not identify the served model. Author latency/quality results are not Rahu measurements. Verify deployed checkpoint, input limits and response envelope before claiming compatibility.
 
 [Kev upstream](https://github.com/jaredpalmer/kev) documents Choice, Score and Boolean-style `noul` questions, its Jev-compatible endpoint and model-family architecture. Its documented confidence formulas measure distribution concentration, not accuracy. Read checkpoint-specific limits and evaluate local task quality, option order and end-to-end service overhead. Repository main resolved to tree `1d77363be5769ad8c64486a51f731f940e92a59b` during inspection; this is an evidence locator, not a selected deployment version.
 
-Rahu does not assume hosted Jev uses the same URL/authentication as OpenRouter chat generation. Confirm the deployed decision endpoint/profile independently. No hosted adapter credential, commercial SLA or benchmark comparison has been tested in this planning pass.
+Rahu does not assume hosted Jev uses the same URL/authentication as OpenRouter chat generation. Confirm the deployed decision endpoint/profile independently. No hosted adapter credential, commercial SLA or benchmark comparison has been tested in this planning pass. The envelope was additionally checked against upstream Kev conformance source blob `86841aad9e740b73697196de49d89b9426fafc15`; [artifact contracts](../specs/artifacts.md) and synthetic fixtures retain that provenance. A reported model alias may echo the request, not reveal the actual checkpoint.
 
 ## Encoders and contrastive routing
 
@@ -46,4 +50,4 @@ Rahu does not assume hosted Jev uses the same URL/authentication as OpenRouter c
 6. Is native Java inference worth its tokenizer/export/package cost?
 7. Are counterfactual labels sufficient to learn a router without selection bias?
 
-Answer through small falsifiable experiments. Do not train, choose ONNX/DJL, or add orchestration before those decisions have evidence. Recent papers mentioned in the earlier conversation are not used as implementation prerequisites without a separate primary-source review.
+Answer through small falsifiable experiments. Do not train, choose ONNX/DJL, or add multi-agent orchestration before those decisions have evidence. Additional recent papers mentioned in the earlier conversation are not implementation prerequisites unless separately reviewed; the seven-area source-code study above has now received that primary-source check.

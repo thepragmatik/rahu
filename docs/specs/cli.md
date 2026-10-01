@@ -9,11 +9,22 @@ The CLI is the first product surface. It should make routing observable while le
 | `rahu config show --config FILE` | Resolved, redacted configuration and provenance |
 | `rahu route inspect --config FILE --prompt TEXT` | Explain feasible candidates without paid generation |
 | `rahu run --config FILE --prompt TEXT` | One bounded user task; supports stdin via `--prompt -` |
+| `rahu chat --config FILE` | In-process follow-up conversation with aggregate limits |
 | `rahu trace inspect RUN_PATH` | Inspect metadata and completeness |
 | `rahu replay RUN_PATH` | Offline policy replay when captured inputs permit |
 | `rahu eval --suite FILE --config FILE` | Offline by default; live execution requires explicit live flag and budget |
 
 `run` inherits shadow mode unless explicitly overridden with `--routing active`. Include `--format text|json`; text is default on terminal, JSON is selected explicitly for automation. Output answer/result to stdout; route decisions, warnings and progress to stderr. JSON mode emits one final structured result to stdout and never mixes progress lines there. Trace JSONL is a separate file.
+
+`run --capture-payloads` explicitly enables bounded private capture for that run; metadata remains default. `config validate --live-check` checks non-billable catalog/service metadata and reports any unverifiable profile. `eval --live --max-cost-usd DECIMAL --report PATH` is the explicit paid form with one aggregate experiment ledger, including all tasks and compaction phases. [Artifact contracts](artifacts.md) specify suite/report formats. No paid budget default for eval.
+
+## Conversational CLI
+
+`chat` supports `/status` (current route, turn count and aggregate settled/reserved/uncertain spend), `/reset` (clear content/continuation, retain ledger/count), and `/exit`. EOF ends cleanly; Ctrl-C cancels the active turn and exits 130. No background paid calls while awaiting input. Each submitted user line is one turn in alpha; multiline content is supplied by one-shot stdin or file input if implemented/documented. Reject unsupported slash commands with help before a paid call.
+
+Text chat sends prompts/progress to stderr and each completed answer to stdout. Non-TTY input consumes one turn per line until EOF; `chat --format json` emits one structured JSONL result per submitted turn, distinguished from `run`'s single final JSON document. Blank lines do not create paid turns. One session has one active turn; no parallel input queue. History is memory-only and does not survive exit. See [context](context.md) for failure retention and limits.
+
+`run` is a fresh single-turn session; it cannot implicitly resume a prior run path. Follow-up dogfooding uses `chat`, not replay. Session/experiment limit errors expose their source without double-counting nested ledger views.
 
 Target terminal footer on stderr:
 

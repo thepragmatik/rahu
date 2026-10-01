@@ -6,21 +6,25 @@ This roadmap is ordered by evidence and dependencies, not calendar promises. Onl
 |---|---|---|---|---|
 | M0 Specification foundation | Another session can implement without reconstructing the conversation | Repository access | Indexed requirements, ADRs, acceptance cases, critical review and handoff | Complete |
 | M1 Routing kernel | A text request reaches a fake provider and then real HTTP adapters through legal joint routing | M0 | Slices S01–S05 verified; live smoke run explicit and bounded | Planned |
-| M2 Dogfood alpha | Useful read-only repository assistance, bounded context, inspectable traces | M1 | S06–S10 verified; all R01–R16 covered; real dogfood report | Planned |
+| M2 Dogfood alpha | Useful read-only repository assistance, follow-up chat, all seven MVP decisions, packaged CLI | M1 | S06–S12 verified; R01–R24 covered; G01–G10 reported with genuine live evidence or explicit blocker | Planned |
 | M3 Evaluation laboratory | Evidence-based routing control and trace comparison | M2 | Frozen suites, paired evaluations, confidence semantics, promotion decision | Planned |
 | M4 Richer single-agent harness | Streaming, resumability, permissioned writes, skills/MCP | M2 reliability; M3 baseline | Separate specs and failure tests; recovery cannot silently duplicate effects | Exploratory |
 | M5 Native decisions | Java-hosted inference compared with HTTP services | M3 evidence that inference topology matters | Tokenizer/export parity, calibration, packaging, memory and latency comparisons | Exploratory |
 | M6 Learned routing | Domain-aware model/effort routing from real trajectories | M3 plus sufficient lawful labels | Held-out gains, counterfactual coverage, calibration and shift analysis | Research |
 | M7 Adaptive policies | Constrained contextual exploration and improved model profiles | M6 reliable estimates | Offline evaluation, bounded experimentation, drift/rollback controls | Research |
-| M8 Orchestration | Specialists and delegation when a single agent is insufficient | M4 strong single-agent behavior | Measured quality gain after coordination cost; shared budgets/cancellation | Exploratory |
+| M8 Multi-agent orchestration | Specialists and delegation when a single agent is insufficient | M4 strong single-agent behavior | Measured quality gain after coordination cost; shared budgets/cancellation | Exploratory |
 
 ## M1 and M2 release gates
 
 M1 must have an offline path and independently configurable decision/generation services. It must reject illegal efforts, missing capabilities, empty candidates and out-of-pool fallback. It must distinguish no reasoning, provider default, and explicit effort. Its live adapter smoke checks use a separately bounded test request; the full run ledger and tool lifecycle arrive in M2. Failure tests are more valuable than adding a fifth module.
 
-M2 adds safe read-only dogfooding and minimal System One-directed summarisation. Summaries preserve pinned instructions and tool-call/result integrity. Replay inspects recorded inputs and runs pure policies with fakes; it does not regenerate an identical answer. Termination, trace gaps and estimated-cost limitations must be visible.
+M2 adds safe read-only dogfooding, in-process follow-up sessions, minimal System One-directed summarisation, trusted prompt assembly, authority and compiled extension contracts. Summaries preserve pinned instructions and tool-call/result integrity. Single-agent-only orchestration is deliberate and tested; M8 is the later delegation stage. Replay inspects recorded inputs and runs pure policies with fakes; it does not regenerate an identical answer. Termination, trace gaps and estimated-cost limitations must be visible.
 
-Before declaring dogfood alpha, complete the active plan, run a clean-checkout offline verification, run a separately budgeted live smoke task, publish a sanitised report with exact versions, and close high-severity review findings. If live credentials/services are unavailable, label the result offline verified and leave the live gate open.
+The build session executes [S01–S12](plans/active/001-dogfood.md) continuously under [the autonomous contract](autonomous-build.md). Complete [the seven-area map](harness-subsystems.md) and [G01–G10](release-gates.md): clean-checkout offline verification, packaged usability, bounded live smoke, sanitised report and closed high-severity findings. If live credentials/services are unavailable, finish every independent offline deliverable, label it offline complete and leave only genuinely blocked gates open. Do not stop at S01/S02 or infer a live success from fake tests.
+
+## Seven areas through the roadmap
+
+M1 establishes loop/integration/tool contracts and basic extension composition. M2 completes memory/context, explicit safety/permissions, single-agent coordination and documented extensibility, with CLI/session/telemetry integration. M4 deepens tools, memory, isolation and extension ecosystems; M5/M6 deepen decision integration; M8 alone introduces multi-agent coordination. [The coverage map](harness-subsystems.md) names exact owners/tests and deliberate exclusions.
 
 ## M3 promotion policy
 

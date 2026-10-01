@@ -14,6 +14,8 @@ Give a developer a small Java harness they can use to develop Rahu itself, while
 
 **Dogfooding:** Rahu reads repository files through bounded read-only tools, answers an architecture question, summarises a long transcript when needed, and leaves an inspectable trace. Arbitrary shell execution and repository mutation are deferred.
 
+**Follow-up:** the developer opens an in-process chat, asks a repository question and follows up using remembered facts. Clear status/reset semantics preserve cost liabilities. The harness does not promise cross-process resume.
+
 **Experimentation:** the developer compares frozen baseline, shadow, and active routing runs. The report includes successes and failures, router overhead, total spend, and limits of the evidence.
 
 ## Required behavior
@@ -36,16 +38,26 @@ Give a developer a small Java harness they can use to develop Rahu itself, while
 | R14 | Apply TDD and recurring critical review to substantial changes | A20 |
 | R15 | Bound filesystem reads, output size, time, token allowance and estimated spend | A08, A12, A13 |
 | R16 | Support calm, accessible, scriptable CLI behavior | A15, A21 |
+| R17 | Retain bounded in-process session context with aggregate turn/spend limits | A22, A32 |
+| R18 | Assemble versioned prompts with provenance/trust and bounded System One projection | A23, A29 |
+| R19 | Apply one deterministic authority/admission sequence to every operation | A24 |
+| R20 | Declare single-agent orchestration, prohibit hidden delegation and stop exact repeated no-progress loops | A25, A27 |
+| R21 | Provide documented compiled-in extension ports/registries without bypassing policy | A26, A28 |
+| R22 | Deliver reproducible packaging, setup and usable run/chat/error output | A28, A31 |
+| R23 | Continue an autonomous incremental build to M2 with release-wide critical review | A20, A30 |
+| R24 | Produce schema/fixture/suite/release evidence with honest offline/live status | A31 |
 
 ## Initial release boundary
 
-The first dogfood release includes HTTP System One routing, OpenRouter catalog/generation, configured pools, shadow and opt-in active modes, text conversations, typed read-only filesystem tools, minimal context compaction, JSONL traces, offline replay, and an evaluation report. Classification, tool relevance, and compaction judgments are bounded System One questions. Arbitrary tool JSON arguments and summaries remain generative work.
+The first dogfood release includes HTTP System One routing, OpenRouter catalog/generation, configured pools, shadow and opt-in active modes, bounded in-process text conversations, versioned context/instruction assembly, typed read-only filesystem tools, minimal context compaction, deterministic authority, compiled-in extension proofs, JSONL traces, offline replay, packaging/setup and a smoke/release report. Classification, tool relevance, and compaction judgments are bounded System One questions. Arbitrary tool JSON arguments and summaries remain generative work.
 
 Begin with non-streaming generation. First-token latency is unavailable in that implementation and must be reported as unavailable. Streaming is a later slice with explicit incomplete-response and cancellation semantics. A dashboard, persistent vector memory, skills platform, MCP, native ModernBERT inference, training, write/shell tools, and multi-agent delegation are outside the initial release.
 
 ## Success criteria
 
 The first success is a reproducible live dogfood run through a real decision service and OpenRouter, with zero side-effect tools, explicit budgets, complete trace structure, and clear failure outcomes. The runtime and adapters must pass all offline acceptance tests. Dynamic routing remains experimental until the evaluation promotion gate is satisfied. No percentage cost reduction or millisecond latency promise is a product claim yet.
+
+[Seven subsystem coverage](harness-subsystems.md) is mandatory at MVP depth. [G01–G10](release-gates.md) distinguishes offline complete from live dogfood verified; absent credentials block the live claim, not independent implementation. This alpha helps analyse/review a repository and proposes code as text; it does not autonomously edit/test that repository. The build session is a separate agent with its own authorised engineering tools.
 
 ## Product principles
 

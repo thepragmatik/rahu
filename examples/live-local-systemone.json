@@ -6,7 +6,8 @@
     "baseUrl": "http://127.0.0.1:8000",
     "compatibilityProfile": "jev-compatible-v1",
     "model": "${RAHU_DECISION_MODEL}",
-    "timeoutMillis": 5000
+    "timeoutMillis": 5000,
+    "costMode": "local-unbilled"
   },
   "generation": {
     "adapter": "openrouter",
@@ -41,6 +42,17 @@
   "catalog": {
     "cacheTtlSeconds": 86400,
     "allowStale": false
+  },
+  "context": {
+    "instructionFiles": []
+  },
+  "session": {
+    "mode": "in-process",
+    "maxTurns": 20,
+    "maxCostUsd": "3.00"
+  },
+  "orchestration": {
+    "mode": "single"
   },
   "tools": {
     "root": ".",

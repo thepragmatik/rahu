@@ -1,6 +1,6 @@
 # Implementation session handoff
 
-The repository is intentionally documentation only. Your first job is to create a tested executable routing slice, not to implement the entire roadmap.
+The repository is intentionally documentation only. Your objective is a usable M2 dogfood release through tested increments in one initiated build session. Begin with a routing slice and continue through the full active plan; future M3–M8 research is outside this build.
 
 ## First action
 
@@ -8,9 +8,11 @@ Read [AGENTS.md](../AGENTS.md), [product.md](product.md), [routing.md](specs/rou
 
 Implement S01 and S02 first: Maven Wrapper plus the four modules, one `verify` command, immutable candidate types, capability fixtures, and a fake end-to-end route. Write `routesOnlyAmongConfiguredCandidates` and `neverSelectsUnsupportedEffort` before the selector. Add no live calls to the default test suite.
 
+Then continue S03–S12 without treating the first slice as completion. Follow [autonomous-build.md](autonomous-build.md), [the seven-area coverage map](harness-subsystems.md), [the setup runbook](runbooks/dogfood.md) and [release gates](release-gates.md). Maintain checked progress in the repository so context compaction can resume work without repeating completed slices.
+
 ## Fixed decisions
 
-Own the loop; separate ports; joint model/effort candidates; OpenRouter generation; generic HTTP System One adapter with verified compatibility profiles; default shadow mode; JSON configuration v1; serial read-only tools; JSONL metadata traces; no router training. Preview features may be used in the kernel when their purpose and cancellation tests justify them.
+Own the loop; separate ports; joint model/effort candidates; OpenRouter generation; generic HTTP System One adapter with verified compatibility profiles; default shadow mode; JSON configuration v1; serial read-only tools; bounded in-process chat; deterministic prompts/trust; explicit compiled-in extensions; JSONL metadata traces; no router training/delegation. Preview features may be used in the kernel when their purpose and cancellation tests justify them.
 
 ## Choices the implementer must verify
 
@@ -18,6 +20,12 @@ Select/pin current Maven/dependency versions and JDK distribution; verify System
 
 The examples use synthetic offline models and environment-resolved live IDs. They are not endorsements of model names from the original conversation. No credentials, source payloads, benchmark data, or upstream model implementations are present.
 
-## Definition of a good first handoff
+## Completion definition
 
-A clean checkout can run offline tests and a fake CLI request. The candidate trace explains exclusions and mode. Preview flags work through packaged execution. Configuration errors are readable. The plan identifies which slices remain. A critical review records meaningful findings and fixes. Do not declare dogfood alpha until tools, compaction, trace replay, and a real bounded smoke run meet their gates.
+A clean checkout passes offline verification and packaged run/chat/replay scenarios. The candidate trace explains exclusions and mode. Preview flags work through packaged execution. Configuration errors are readable. Seven subsystem decisions are verified, and release-wide critique closes high-severity findings. A real bounded smoke additionally establishes live dogfood status. If services are absent, finish offline work and supply a precise live-verification runbook; do not stop at a library.
+
+## Kickoff prompt for the build session
+
+```text
+Build Rahu from this repository through M1 and M2 to a reasonably usable read-only dogfood release. Follow AGENTS.md, docs/autonomous-build.md, the seven subsystem map, detailed specs and the active S01–S12 plan. Execute incrementally with TDD, small commits, critical reviews and actual output/design checks; keep going after each slice. Use the latest verified GA Java and justified preview features. Preserve System One routing, independent local decision configuration, legal model/effort pools and deterministic tool authority. Deliver packaged CLI, in-process chat, compaction, traces/replay, extension proof, offline tests and setup docs. Validate against G01–G10. Use only supplied live config/services and an explicit smoke allowance for paid verification. If those are absent, complete all offline-verifiable work and report the live gate blocked with exact prerequisites. Do not implement later training, native inference, dynamic plugins, effectful tools or delegation. Record evidence and residual risks; never claim fake runs as real dogfood or a small smoke as routing-quality validation.
+```

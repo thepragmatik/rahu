@@ -17,11 +17,15 @@ Effort vocabulary v1 is `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `ma
 
 Record exclusions with reason codes, provenance and snapshot hash. Baseline and fallback aliases must resolve to feasible candidates for this operation; configure separate operation references where needed. A tool-compatible fallback cannot be replaced by an answer-only candidate during a pending tool continuation.
 
+Candidate construction and [context preflight](context.md) cooperate: if otherwise legal routes are excluded solely for conversation context, consider a permitted larger-context route and then admitted source summarisation/rebuild before terminal failure. Unknown capabilities, authority denial and spend exclusion cannot be fixed by discarding constraints in a summary.
+
 ## Decision and resolution
 
 Send bounded state and trusted candidate descriptions to System One. Descriptions include task strengths backed by evidence or explicitly labelled operator assumptions, supported tools/context, effort, and estimated cost. Model names alone are poor quality labels. Avoid language claiming a universal smartest or cheapest model.
 
 Validate the returned candidate ID. Probabilities, when present, must cover exactly the submitted choices, be finite and in [0,1], and sum to 1 within 0.0001. Reject material violations; only roundoff may be normalised, with an event. Ties resolve using stable candidate order and are marked ambiguous. Keep probability of the chosen action, provider confidence and its formula separate. Confidence thresholds operate on a named field; default `chosen_probability` is 0.65. This is a provisional concentration gate, not an accuracy guarantee.
+
+The reported choice must have maximal probability within 0.0001; material disagreement is a protocol failure. For genuine ties core applies stable order and records the provider label separately rather than silently pretending the server made that selection. Concentration validation is intentionally stricter than an upstream smoke test's loose tolerance; document discrepancies rather than treating malformed distributions as calibrated.
 
 | Condition | Required behavior |
 |---|---|

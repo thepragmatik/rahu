@@ -52,3 +52,7 @@ Estimate quality `Q(x,a)`, cost `C(x,a)` and latency `L(x,a)` over feasible cand
 Logged selected actions alone do not identify counterfactual quality. Future contextual bandits need logged action propensities, overlap, bounded exploration, and honest off-policy estimation. Do not apply importance weighting when behavior probabilities are unknown or candidate support is zero. Dogfood logs may contain sensitive code: dataset permission, redaction and retention precede training.
 
 Use [the experiment template](../templates/experiment.md) for each result, including negative findings and stop decisions.
+
+## Dogfood build verification
+
+The [alpha suite](suites/dogfood-alpha-v1.json) covers same-session follow-up and a bounded synthetic compaction source as well as read-only policy. [Artifact contracts](../specs/artifacts.md) define its loader/report and one aggregate ledger. [Release gates](../release-gates.md) distinguish offline evidence and real protocol smoke. This suite establishes usability/compatibility and does not replace the predeclared held-out M3 quality study.

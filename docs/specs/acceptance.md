@@ -25,6 +25,17 @@ These scenarios become named tests and release evidence. A scenario is a behavio
 | A19 | Preview bytecode and selected toolchain | Compile, test, package and launcher run | Same JDK/release and preview flags succeed; no stale preview API examples |
 | A20 | Substantial implemented slice | Marked complete | Hypothesis, checks, critical findings/fixes, residual risks and spec updates recorded |
 | A21 | Non-TTY, NO_COLOR, narrow terminal or JSON mode | Run success/failure output | Stable stdout result, stderr diagnostics, useful exit codes and no colour-dependent meaning |
+| A22 | In-process chat with two user turns and aggregate allowance | A follow-up references an earlier fact | Retains ordered facts/tool units; fresh run IDs, same session; paid admission fits session and run limits |
+| A23 | Explicit instruction files, untrusted repository text and oversized router state | Context/template/projection is assembled | Deterministic order/roles/hashes; no auto-privileged AGENTS loading; no silent mandatory truncation |
+| A24 | Model/summary/tool text requests expanded effects or an extension bypasses admission | An operation is proposed | Common deterministic pipeline denies before effect; no model-created grants, keys or root expansion |
+| A25 | Delegation/parallel-worker config or proposed hidden child request | Validation/driver runs | Unsupported mode rejected; one agent/active turn; no speculative paid fan-out |
+| A26 | Test-only compiled read tool/provider and duplicate/unknown/effectful registrations | Composition/run/cleanup occurs | Extension works through common policy; illegal registration denied; resources closed without loop changes |
+| A27 | Three exact completed tool batches with same arguments/results but new call IDs | Another cycle would start | `NO_PROGRESS` after third batch; different new observation resets streak; compaction cannot erase it |
+| A28 | Four modules and justified ports | Dependency/API/packaged design is reviewed | Core has no adapter DTO imports; small interfaces; documented real extension example and launcher verified |
+| A29 | Routes excluded only for context, or low conversation soft allowance | Preflight plans compaction | Feasible source summary can precede candidate rebuild; constraints/pins retained; budget/context exhaustion stops finitely |
+| A30 | Agent completes a verified slice or lacks live credentials | Build session continues | Proceeds S01–S12 to offline release; only external live gates blocked; release-wide critique and evidence manifest |
+| A31 | Examples/suites/events/config schema and packaged product | Clean-checkout release verification runs | Formats validate; exact setup/run/chat/replay commands work; offline/live gates and costs reported honestly |
+| A32 | Failed chat turn, reset, or independent session | New context is assembled/admission checked | Reset preserves counts/liability; incomplete answer omitted; explicit failure retained; no cross-session history leakage |
 
 ## Additional invariant suites
 

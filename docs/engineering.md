@@ -50,3 +50,7 @@ Select one JSON library and stable CLI library where useful. Avoid Spring/agent 
 Use small commits that correspond to verified slices. A PR explains problem and resulting behavior, hypothesis, tests/commands actually run, evidence, critical review and residual risks. Update ADRs on consequential decisions. Keep the plan current; move completed plans only after their release gate is verified. Never write that a live run succeeded without a receipt/trace. Document environment blockers precisely and retain unfinished gates.
 
 All substantial implementations include a post-change critique using [the review template](templates/critical-review.md). Review performance after correctness with JFR/JMH only where measurement addresses a concrete hypothesis. Benchmark router end-to-end HTTP latency and service compute latency separately. Avoid expensive train/build loops before a small prototype falsifies the uncertainty.
+
+## Continuous build and release
+
+The initiated build targets the whole M2 release, not a first-slice handoff. Follow [autonomous-build.md](autonomous-build.md), check every [subsystem](harness-subsystems.md), and satisfy [release gates](release-gates.md). Stable packaging/launcher, generated config schema, suite/report formats, actual extension example and run/chat/replay quickstart are implementation deliverables. Verify offline/live status separately and checkpoint actual evidence through context compaction.

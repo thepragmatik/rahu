@@ -8,8 +8,8 @@ Rahu is a Java agent harness with a separately configurable System One decision 
 
 1. Read [AGENTS.md](AGENTS.md) for implementation instructions and the recurring critical-review workflow.
 2. Read [product specification](docs/product.md) and [roadmap](docs/roadmap.md) for scope and release gates.
-3. Read [architecture](ARCHITECTURE.md), then the relevant [specifications](docs/README.md).
-4. Follow the ordered [implementation plan](docs/plans/active/001-dogfood.md). The [handoff](docs/handoff.md) identifies the first executable slice.
+3. Read [the seven subsystem coverage map](docs/harness-subsystems.md), [architecture](ARCHITECTURE.md), then the relevant [specifications](docs/README.md).
+4. Follow the ordered [implementation plan](docs/plans/active/001-dogfood.md) continuously through M2. The [handoff](docs/handoff.md) supplies the kickoff instruction, [autonomous-build contract](docs/autonomous-build.md) defines persistence, and [release gates](docs/release-gates.md) define completion.
 
 ## Product intent
 
@@ -28,6 +28,9 @@ The initial implementation will own its loop and use OpenRouter for generation. 
 |---|---|
 | [docs/product.md](docs/product.md) | Requirements, user journeys, MVP boundaries |
 | [docs/roadmap.md](docs/roadmap.md) | Stages, dependencies, measurable exit criteria |
+| [docs/harness-subsystems.md](docs/harness-subsystems.md) | Explicit MVP decisions and evidence for all seven areas |
+| [docs/autonomous-build.md](docs/autonomous-build.md) | One initiated build completed through verified increments |
+| [docs/release-gates.md](docs/release-gates.md) | Offline readiness, real dogfood and separate optimisation claims |
 | [docs/specs](docs/README.md) | Routing, protocols, runtime, tools, configuration, traces, CLI |
 | [docs/engineering.md](docs/engineering.md) | Java, build, tests, concurrency, delivery practices |
 | [docs/design.md](docs/design.md) | API and CLI design aesthetics and review rubric |

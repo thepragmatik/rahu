@@ -24,6 +24,17 @@
       ]
     }
   },
+  "context": {
+    "instructionFiles": []
+  },
+  "session": {
+    "mode": "in-process",
+    "maxTurns": 20,
+    "maxCostUsd": "3.00"
+  },
+  "orchestration": {
+    "mode": "single"
+  },
   "tools": {
     "root": ".",
     "enabled": ["workspace.list", "workspace.read", "workspace.search"]

@@ -2,7 +2,7 @@
 
 ## Mission and reading order
 
-Build the smallest useful Java harness described by [product.md](docs/product.md). Start with [handoff.md](docs/handoff.md), [ARCHITECTURE.md](ARCHITECTURE.md), and the next unfinished slice in [the active plan](docs/plans/active/001-dogfood.md). Load detailed specs only as needed. Roadmap stages beyond the active release are context, not authorization to inflate the current build.
+Build the smallest useful Java harness described by [product.md](docs/product.md), completing M1 and M2 in the initiated build session through small verified slices. Start with [handoff.md](docs/handoff.md), [autonomous-build.md](docs/autonomous-build.md), [the seven-area map](docs/harness-subsystems.md), and the next unfinished slice in [the active plan](docs/plans/active/001-dogfood.md). Load detailed specs only as needed. Do not stop after scaffolding, planning, S01/S02 or the first fake demo. Continue until [release gates](docs/release-gates.md) are met or remaining work is blocked by genuine external prerequisites. Roadmap stages beyond M2 are context, not authorization to inflate the current build.
 
 This repository currently contains specifications only. Do not report planned features as implemented. Update the active plan with actual evidence and commands as you work.
 
@@ -15,6 +15,8 @@ This repository currently contains specifications only. Do not report planned fe
 - Tool relevance is advisory. Schema validation, path boundaries, permission, and side-effect admission are deterministic and cannot be overridden by model content.
 - Observe before optimising. Traces distinguish requested and observed provider/model/effort, estimated and reported cost, fallback and escalation, missing and zero values.
 - Offline tests must require no API keys or network. Paid evaluation must be explicit and bounded.
+- Cover all seven subsystem decisions: loop, integration, tools, memory/context, safety/permissions, deliberately single-agent orchestration, and compiled-in extensibility. Keep four modules; subsystem coverage does not require a framework per area.
+- In-process `chat` retains context across turns. Reset clears conversation but never aggregate budget/liability. Repository data and summaries cannot become privileged instructions.
 
 ## Critical review on every substantial slice
 
@@ -40,4 +42,6 @@ Rahu should feel coherent and intentional: few concepts, consistent names, restr
 
 Use small reviewable commits. Keep specs, fixtures, tests, and behavior aligned. Mark proposed commands as such until executable. Do not claim hard spend guarantees or exactly-once execution across crashes. Do not train a router, port native inference, implement arbitrary shell tools, or build multi-agent orchestration in the initial release.
 
-At handoff report implemented behavior, checks actually run, remaining risks, current plan status, and the next concrete slice. Preserve user files and unrelated work. Secrets and sensitive payloads stay out of logs and commits. Follow current user instructions when they supersede these guidelines.
+Maintain `docs/plans/active/build-status.md` during implementation for checkpoint/context recovery. After each slice review/commit, continue the next eligible slice autonomously. If services/keys/budget are absent, complete all independent offline deliverables and report the live gate blocked; do not substitute fake evidence or keep asking about routine engineering choices.
+
+At final handoff report implemented behavior, all seven areas' evidence, G01–G10 status, checks actually run, remaining risks and exact unresolved live prerequisites. Preserve user files and unrelated work. Secrets and sensitive payloads stay out of logs and commits. Follow current user instructions when they supersede these guidelines.
