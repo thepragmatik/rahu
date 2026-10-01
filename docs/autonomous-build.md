@@ -1,6 +1,6 @@
 # Autonomous build contract
 
-The intended execution is one initiated agentic build session that continues through M1 and M2 using all S01–S12 as small verified slices. It is not one giant commit, one untested generation, or a guarantee that external credentials/services are available. Start with [handoff](handoff.md); execute [the active plan](plans/active/001-dogfood.md); finish against [release gates](release-gates.md).
+The intended execution is one initiated agentic build session that continues through M1 and M2 using all S01–S12 as small verified slices. It is not one giant commit, one untested generation, or a guarantee that external credentials/services are available. Start with [root prompt.md](../prompt.md) and [handoff](handoff.md); execute [the active plan](plans/active/001-dogfood.md); finish against [release gates](release-gates.md).
 
 ## Completion objective
 
@@ -10,7 +10,7 @@ Operationally complete means offline tests/packaged demos pass and a new develop
 
 ## Preflight once, then keep working
 
-Inspect repository changes and AGENTS guidance; check Java/Maven/git/network/tool availability; identify explicit live config, decision endpoint/model, generation IDs/key and a user-authorised total smoke allowance. Validate non-secret references without printing secrets. Keep a prerequisites record with available, missing or verified status.
+Inspect repository changes and AGENTS guidance; check Java/Maven/git/network/tool availability; identify explicit live config, decision endpoint/model, generation IDs/key, approved non-sensitive prompts/source views and a user-authorised total smoke allowance. Validate non-secret references without printing secrets. Check safe input/source prerequisites separately; inspect protected files only through authorised local tools returning safe status, never raw hosted-context output. Before any live call implement [strict privacy](specs/privacy.md), including initial classification, summaries, tools and final transport. Missing safe inputs blocks live checks only. Keep a prerequisites record with available, missing or verified status.
 
 If no live services/keys are available, build every offline-verifiable feature and package/run it anyway. At the end report only the unresolved live prerequisites and exact commands to finish verification. Never replace System One with a generative classifier to claim completion. Do not provision GPU infrastructure, train/download large models, subscribe to services, expand the model pool or increase spending to avoid a blocker.
 

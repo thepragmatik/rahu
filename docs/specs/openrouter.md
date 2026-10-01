@@ -31,3 +31,5 @@ Defaults: connection 5 seconds, total generation request 120 seconds within the 
 ## Contract evidence
 
 Build local-server fixtures for catalog variants, effort mapping, unsupported effort, ignored-parameter prevention, multiple calls, empty length response, missing costs, opaque continuation and typed errors. Pin upstream docs/fixture revision and verify against live API only in opt-in integration runs. New vendor fields require a contract review; normal tests never depend on today's live catalog.
+
+Before generation, summary, retry or fallback transport, enforce [privacy](privacy.md) over the exact serialised body and metadata, independently of core safe-view planning. Preserve only privacy-admitted compatible opaque continuation; unverified opaque content blocks. Credential injection is restricted to this service's authentication field and cannot enter prompts or diagnostics.

@@ -6,6 +6,8 @@ Build the smallest useful Java harness described by [product.md](docs/product.md
 
 This repository currently contains specifications only. Do not report planned features as implemented. Update the active plan with actual evidence and commands as you work.
 
+Use [prompt.md](prompt.md) as the complete initiating build instruction. Its [privacy contract](docs/specs/privacy.md) is mandatory: do not expose PII, credentials or sensitive content to providers or external surfaces. Keep protected files/raw tool outputs out of the hosted build-agent context, use synthetic data, and implement local safe-view checks before any real model request. Unknown/restricted outbound content fails closed; a provider/summary/fallback cannot serve as a privacy bypass.
+
 ## Nonnegotiable design properties
 
 - Production decision boundaries use a real System One adapter. Fake/rule engines support deterministic tests and explicit fallback only; never silently substitute a chat LLM and call it System One.

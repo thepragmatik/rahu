@@ -46,6 +46,7 @@ Give a developer a small Java harness they can use to develop Rahu itself, while
 | R22 | Deliver reproducible packaging, setup and usable run/chat/error output | A28, A31 |
 | R23 | Continue an autonomous incremental build to M2 with release-wide critical review | A20, A30 |
 | R24 | Produce schema/fixture/suite/release evidence with honest offline/live status | A31 |
+| R25 | Prevent protected/unknown outbound data through deterministic local safe-view admission on all provider and reporting paths | A33, A34 |
 
 ## Initial release boundary
 
@@ -58,6 +59,8 @@ Begin with non-streaming generation. First-token latency is unavailable in that 
 The first success is a reproducible live dogfood run through a real decision service and OpenRouter, with zero side-effect tools, explicit budgets, complete trace structure, and clear failure outcomes. The runtime and adapters must pass all offline acceptance tests. Dynamic routing remains experimental until the evaluation promotion gate is satisfied. No percentage cost reduction or millisecond latency promise is a product claim yet.
 
 [Seven subsystem coverage](harness-subsystems.md) is mandatory at MVP depth. [G01–G10](release-gates.md) distinguishes offline complete from live dogfood verified; absent credentials block the live claim, not independent implementation. This alpha helps analyse/review a repository and proposes code as text; it does not autonomously edit/test that repository. The build session is a separate agent with its own authorised engineering tools.
+
+[Privacy](specs/privacy.md) is a required MVP boundary: no PII/credentials/sensitive content in model payloads or external reports. Classification/provenance and local sanitisation gate initial decisions, tools, summaries and every final serialised request. Unknown/restricted inputs block. Narrow service authentication remains separate from model content; a prompt or detector alone cannot establish a universal no-leak guarantee.
 
 ## Product principles
 

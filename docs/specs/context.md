@@ -14,6 +14,8 @@ Items carry stable ID, kind, source/provenance, trust tier, content or private p
 
 Do not automatically ingest the repository. Read through bounded tools or explicit instruction inputs. An `AGENTS.md` discovered through a tool is repository data, not automatically a privileged runtime instruction. The build agent's own AGENTS.md instructions are a separate concern from what the built Rahu runtime loads.
 
+Trust tier and [privacy classification](privacy.md) are separate: a privileged operator instruction can still contain restricted data. Keep original local items distinct from model-visible safe views. Apply privacy before the initial decision projection and prompt assembly; revalidate final outbound content. File selection, pinning or approval for behavioral guidance cannot authorise sending PII/secrets/confidential text.
+
 ## Prompt assembly
 
 Assemble deterministically using versioned templates with this order:
@@ -44,6 +46,8 @@ The optional `context.maxPromptTokens` is a stricter conversation prompt allowan
 After `ANSWER_COMPLETE`, add the completed turn to session history. On a failed turn keep the user request and an explicit failure observation; retain completed read-only observations for diagnosis, discard incomplete generated content from future prompts, and settle/retain liabilities. Never create an assistant answer from partial output. Provider-specific opaque data can be retained only at a documented safe boundary.
 
 Never send an orphan tool observation as a future tool-role message. If only part of a batch completed, retained diagnostic observations are untrusted source data with provenance, or the whole failed unit is omitted from model context while remaining in the private run trace. Do not invent successful results for unexecuted calls to make a transcript look valid.
+
+History and summaries retain privacy/provenance, and generated content is rechecked before later model use. Never send raw protected history to a summariser to obtain a 'sanitised' view. Opaque continuation must meet origin/privacy requirements as well as provider compatibility; unknown blocks cannot be redacted in place or silently cleared to hide incompatibility.
 
 `/reset` clears conversational content and continuation after the active turn completes; it does not reset the session ID, aggregate budget or turn count. Starting a new session is explicit. `/exit`, EOF and interruption release memory/resources. No automatic disk transcript persistence: metadata traces remain default; payload capture is a separate explicit privacy choice. Resume/fork/export/import are later contracts.
 

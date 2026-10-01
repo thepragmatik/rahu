@@ -2,7 +2,7 @@
 
 ## State and termination
 
-One run has a UUID, parent session/turn identity, immutable configuration/catalog references, transcript, generation-attempt count, compaction count, ledger and monotonic deadline. Terminal reasons are `ANSWER_COMPLETE`, `NO_FEASIBLE_ROUTE`, `STEP_LIMIT`, `TIME_LIMIT`, `COST_ADMISSION_DENIED`, `CONTEXT_LIMIT`, `NO_PROGRESS`, `PROVIDER_FAILURE`, `DECISION_FAILURE`, `TOOL_FAILURE`, `CANCELLED`, `TRACE_FAILURE`, and `INDETERMINATE`.
+One run has a UUID, parent session/turn identity, immutable configuration/catalog references, transcript, generation-attempt count, compaction count, ledger and monotonic deadline. Terminal reasons are `ANSWER_COMPLETE`, `NO_FEASIBLE_ROUTE`, `STEP_LIMIT`, `TIME_LIMIT`, `COST_ADMISSION_DENIED`, `CONTEXT_LIMIT`, `NO_PROGRESS`, `PRIVACY_BLOCKED`, `PROVIDER_FAILURE`, `DECISION_FAILURE`, `TOOL_FAILURE`, `CANCELLED`, `TRACE_FAILURE`, and `INDETERMINATE`.
 
 Exactly one terminal event is attempted. A missing event after process failure means incomplete run, not success. The runtime transitions through created, deciding, admitted, generating, validating-tools, executing-tools, compacting and terminal. A terminal state cannot start a new request. Inject clock and IDs; use monotonic time for deadlines, UTC wall time for records.
 
@@ -39,3 +39,5 @@ Validate summary length, required facts selected from pinned structured state, a
 Serial run state mutation and serial tools are deliberate MVP constraints. Independent read-only preparatory tasks may use scoped virtual threads with structured concurrency. No speculative parallel generation, hedged paid calls or unscoped executors. Parent cancellation cancels children, close joins lifetime, and bounded semaphores protect remote and local-service capacity. Cancellation tests use latches/fake servers, not sleeps.
 
 [The orchestration contract](orchestration.md) defines one active session turn, deliberate absence of delegation and exact repeated-batch `NO_PROGRESS` termination. [Safety](safety.md) defines common admission; [context](context.md) defines failed-turn retention and reset. Trace state remains per run, with parent session/experiment identifiers for aggregate accountability.
+
+All decision/generation/summary requests use [the privacy gate](privacy.md). Admission sees only a safe model-visible view; unknown/restricted required content terminates before dispatch/reservation. A typed privacy failure is not a provider error to retry/fallback elsewhere. Revalidate exact serialised bytes after adapter additions; blocked dispatch releases only definitely unused reservations. Provider-authentication credentials use the narrow matching-service transport exception and never enter context.

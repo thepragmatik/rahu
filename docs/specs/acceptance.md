@@ -36,6 +36,8 @@ These scenarios become named tests and release evidence. A scenario is a behavio
 | A30 | Agent completes a verified slice or lacks live credentials | Build session continues | Proceeds S01–S12 to offline release; only external live gates blocked; release-wide critique and evidence manifest |
 | A31 | Examples/suites/events/config schema and packaged product | Clean-checkout release verification runs | Formats validate; exact setup/run/chat/replay commands work; offline/live gates and costs reported honestly |
 | A32 | Failed chat turn, reset, or independent session | New context is assembled/admission checked | Reset preserves counts/liability; incomplete answer omitted; explicit failure retained; no cross-session history leakage |
+| A33 | Synthetic protected/unknown values in prompt, instruction, history, tool, candidate, nested JSON or adapter fields | Initial decision, generation, summary or fallback would dispatch | Local gate/final body checks give zero sends; pre-admission blocks allocate nothing and late rechecks release only unused reserves; no provider sanitisation or cross-provider bypass |
+| A34 | Approved source changes, generated output repeats a canary, opaque continuation or diagnostic/export contains protected metadata | History/reuse/transport/report occurs | Revalidate provenance/body; unsafe opaque return blocks; no raw values/mappings in output; only matching service auth header can carry its credential |
 
 ## Additional invariant suites
 

@@ -26,6 +26,7 @@ Precedence: built-in operational defaults < explicit configuration file < docume
 | `context` | instructionFiles (explicit ordered local paths), optional maxPromptTokens, routerStateBytes |
 | `session` | mode `in-process`, maxTurns, maxCostUsd; no automatic persistence |
 | `orchestration` | mode `single` only in alpha |
+| `privacy` | mode `strict`, onUnknown `block`, inputClassification `unknown`/`approved-nonsensitive`, optional local sourcePolicyFile |
 
 Candidate references are `alias@policy`. A reference must exist in its named pool. The same alias cannot identify different models within a pool. Efforts cannot be an empty list. Local-service model is independent from generation model aliases. Provider constraints apply to every attempt. Allowlist fields never accept wildcard expansion by model text.
 
@@ -48,13 +49,22 @@ Limits are finite: timeouts/deadlines and byte/token/attempt counts must be posi
 | Context | no instruction files; model-derived prompt allowance; 16384-byte router state content |
 | Session | in-process; 20 turns; USD 3.00 aggregate admission; no persistence |
 | Orchestration | single; exact no-progress streak 3; no delegation |
+| Privacy | strict; unknown blocks; input classification unknown; no implicit source approval |
 
 ## Validation and disclosure
 
 `config validate` resolves references without generation and reports whether catalog/decision compatibility was verified or only structurally validated. Network catalog checks are explicit in live mode; paid model checks are separate opt-in. `config show` displays resolved non-secret configuration, source of each override, and redacts secrets. `route inspect` explains candidates and exclusions without calling a decision model unless requested.
 
-Do not persist `${ENV}`-resolved credentials or include them in config hashes. Hash a canonical redacted non-secret representation. Reject credentials embedded in URLs; redact error bodies. A local model can receive sensitive request content, so endpoint selection is a trust decision even when its monetary provider cost is zero.
+Do not persist `${ENV}`-resolved credentials or include them in config hashes. Hash a canonical redacted non-secret representation. Reject credentials embedded in URLs; redact error bodies. Apply [the privacy contract](privacy.md) to every decision/generation request, including local services. Endpoint selection and read permission never authorise disclosure of protected content. No sensitive-body or privacy-bypass configuration is supported.
 
 Limit settings including `context.maxPromptTokens`, session amounts/counts and routerStateBytes follow exact numeric validation/defensive ceilings; routerStateBytes may reduce but cannot raise the 16384-byte default content ceiling in alpha. Instruction files are explicitly selected data-only inputs; no recursive loading or executable hooks. Unknown adapter names and orchestration modes fail; they never trigger discovery/download. `config validate --live-check` can fetch catalog/service model metadata but must not invoke billable decisions/generation.
 
 For decisions, `costMode=local-unbilled` is valid only for fake or explicitly operated loopback services and means no upstream provider invoice, not zero local compute cost. This is the loopback example's explicit policy. Hosted/token-billed services require known pricing from verified service metadata or `costMode=configured-tariff` with exact-decimal pricing inputUsdPerToken, outputUsdPerToken, requestUsd, evidence and expiry. Fixed-fee tariffs may set token rates to zero. Unknown/expired required price evidence prevents paid decision admission, even before generation. Estimate the bounded typed response schema, not an unconstrained autoregressive output. Report actual/estimated/unknown settlement honestly.
+
+## Privacy source policy
+
+Only `strict`/`block` are supported for privacy mode/unknown handling; reject other values and unknown privacy keys. Explicit `approved-nonsensitive` input classification records operator assessment of submitted text, not permission to transmit a protected finding. The CLI can override this field for a selected safe input. Only the built-in fixture loader can establish synthetic provenance; arbitrary user config/text cannot self-declare synthetic.
+
+An optional `privacy.sourcePolicyFile` resolves to a local UTF-8 JSON file, read with bounded size and the same duplicate/unknown-key rejection as config. Version 1 is `{"schemaVersion":1,"entries":[]}` with each entry containing exactly `path` (workspace-relative regular-file path), `sha256` (64 lowercase hexadecimal characters over exact file bytes) and `classification` (`approved-nonsensitive`). Reject duplicates, unsafe paths, symlinks and other classifications; no wildcards, URL loading or recursive includes. An empty manifest approves no source. Changing bytes invalidates approval. Approval covers the selected file view, subject to local scanning, and cannot weaken exclusions or authorise unrelated directory metadata.
+
+Generate hashes only with authorised local tools that do not print file contents. Review selected sources as non-sensitive before creating the local manifest; do not classify a whole private repository by assumption. Keep the policy/mappings local and ignored, for example `privacy.local.json`. Safe errors identify categories and corrective actions without printing identifying paths, hashes or blocked values. Config display/validation output is also subject to safe diagnostics, not an unrestricted dump.

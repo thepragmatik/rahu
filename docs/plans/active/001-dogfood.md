@@ -49,7 +49,7 @@ Acceptance: A04, A10, A16, A18. Evidence: local HTTP contract captures. Default 
 - [ ] Test invalid/missing/disagreeing answers, cancellation and independent credentials.
 - [ ] Seed envelope tests from authored fixtures/provenance; reject truncation and avoid alias-as-checkpoint claims.
 
-Acceptance: A02, A06. Evidence: contract tests; one explicitly budgeted real service smoke check if available. M1 live gate remains open if services/keys are unavailable.
+Acceptance: A02, A06. Evidence: synthetic local HTTP contract tests. No real model calls before S06 mandatory privacy/admission; any later smoke requires approved non-sensitive inputs and explicit aggregate allowance. Missing live prerequisites do not block M1 offline contracts.
 
 ### S06 Bounded runtime and ledger
 
@@ -58,9 +58,10 @@ Acceptance: A02, A06. Evidence: contract tests; one explicitly budgeted real ser
 - [ ] Propagate cancellation and cleanup; prevent retries of ambiguous paid/effect outcomes.
 - [ ] Add serial tool batch state and complete terminal semantics.
 - [ ] Add common authority pipeline, hierarchical run/session/experiment admission and exact no-progress detector.
+- [ ] Implement strict local privacy gate before initial classification/reservation and final serialised transport, safe-view provenance and `PRIVACY_BLOCKED`; cover every adapter/fallback with synthetic canaries (A33/A34).
 - [ ] Prove deliberate single-agent mode, one active turn and absence of hidden paid fan-out.
 
-Acceptance: A09, A12, A13, A24, A25, A27, A32. Evidence: fake-server/latch tests with no leaked work. Start structured concurrency only where independent child work exists. Session/experiment ledger reset tests precede interactive/live workflows.
+Acceptance: A09, A12, A13, A24, A25, A27, A32–A34. Evidence: fake-server/latch tests with no leaked work. Start structured concurrency only where independent child work exists. Session/experiment ledger reset tests precede interactive/live workflows.
 
 ### S07 Read-only dogfood tools
 
@@ -68,9 +69,10 @@ Acceptance: A09, A12, A13, A24, A25, A27, A32. Evidence: fake-server/latch tests
 - [ ] Enforce root, exclusions and no symlink traversal; document race limitations.
 - [ ] System One chooses relevance; code retains authority and validation.
 - [ ] Preserve IDs/results and expose invalid/denied observations correctly.
+- [ ] Gate tool paths/snippets/results as approved safe views independently of read permission; deny protected/unknown content without echoing it (A33/A34).
 - [ ] Freeze registry/descriptors; run test-only compiled read tool through the same authority path; reject duplicate/effectful registrations.
 
-Acceptance: A08, A09, A24, A26. Evidence: realistic repository fixtures including injected tool text and sensitive path cases. No shell/write tool.
+Acceptance: A08, A09, A24, A26, A33, A34. Evidence: realistic repository fixtures including injected tool text and sensitive path cases. No shell/write tool.
 
 ### S08 Traces and offline replay
 
@@ -78,19 +80,21 @@ Acceptance: A08, A09, A24, A26. Evidence: realistic repository fixtures includin
 - [ ] Test persistence failure before/after effect start and incomplete/corrupt run reading.
 - [ ] Implement trace inspect and deterministic policy replay using recorded inputs/fakes.
 - [ ] Document replay limitations and forbid network/effects in replay.
+- [ ] Prove diagnostics/export/debug cannot disclose protected values, mappings or raw provider errors; use synthetic capture fixtures only (A34).
 
-Acceptance: A10, A11, A16. Evidence: golden traces, integrity tests and reproducible replay. Required effect-start persistence must be in place before live tools are enabled; use an in-memory event sink while S06/S07 tests are offline.
+Acceptance: A10, A11, A16, A34. Evidence: golden traces, integrity tests and reproducible replay. Required effect-start persistence must be in place before live tools are enabled; use an in-memory event sink while S06/S07 tests are offline.
 
 ### S09 Minimal context compaction
 
 - [ ] Write pinned-context and complete-tool-pair tests.
 - [ ] Implement context item provenance, versioned prompt assembly and bounded System One projection.
+- [ ] Preserve privacy classification through source mutation/history/summary; re-scan generated views and block unverifiable opaque continuation (A33/A34).
 - [ ] Implement explicit instruction files and in-process run/chat session ownership/failure retention/reset.
 - [ ] Add System One compaction policy and joint summarisation routing.
 - [ ] Preserve original context on failure; enforce next-request fit and compaction limits.
 - [ ] Support context-only no-route preflight and stricter conversation allowance without invalidating summary-source admission.
 
-Acceptance: A14, A18, A22, A23, A29, A32. Evidence: golden prompts, two-turn CLI test, long fake transcript and bounded real summary experiment when available. No vector memory, disk resume or hierarchical summariser.
+Acceptance: A14, A18, A22, A23, A29, A32–A34. Evidence: golden prompts, two-turn CLI test, long fake transcript and bounded real summary experiment when available. No vector memory, disk resume or hierarchical summariser.
 
 ### S10 Integrated smoke runner and evaluation baseline
 
@@ -113,8 +117,8 @@ Acceptance: A15, A19, A21, A26, A28, A31. Evidence: packaged smoke output, gener
 
 ### S12 Release-wide critique and real dogfood
 
-- [ ] Check G01–G10 and map every R01–R24/A01–A32 to actual test/report evidence.
-- [ ] Run the bounded real dogfood suite using a genuine supplied System One service and OpenRouter, when explicit config/budget permit.
+- [ ] Check G01–G10 and map every R01–R25/A01–A34 to actual test/report evidence.
+- [ ] Run the bounded real dogfood suite using a genuine supplied System One service and OpenRouter, when explicit config/budget and approved safe inputs permit; privacy controls must already be verified.
 - [ ] Verify real classification/relevance/joint routing plus compaction/summary decisions; report degraded fallbacks rather than treating them as compatibility.
 - [ ] Critically review cross-subsystem interactions and correct all high-severity findings.
 - [ ] Produce sanitised release report, exact setup commands and remaining risks; keep shadow default until M3 promotion.
@@ -139,7 +143,7 @@ Use independent work when a prerequisite is externally blocked, retaining unreso
 
 ## Release review
 
-Run all offline checks from a clean checkout; run packaged run/chat/replay workflows; verify examples/schema/suites/docs links; inspect route/error output; review credentials/redaction; confirm every requirement is mapped to passing evidence. Apply [G01–G10](../../release-gates.md) and the seven-area map. Any high-severity authority, capability, duplicate-effect, continuation, ledger-reset or cancellation finding blocks dogfood release. Document live gates honestly.
+Run all offline checks from a clean checkout; run packaged run/chat/replay workflows; verify examples/schema/suites/docs links; inspect route/error output; review credentials/redaction; confirm every requirement is mapped to passing evidence. Apply [G01–G10](../../release-gates.md) and the seven-area map. Any high-severity privacy, authority, capability, duplicate-effect, continuation, ledger-reset or cancellation finding blocks dogfood release. Document live gates honestly.
 
 ## Progress record
 

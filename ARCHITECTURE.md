@@ -42,7 +42,7 @@ The following names are design contracts, not source stubs. Implement precise ty
 | `ToolOutcome` | Success, denied, invalid, failed, cancelled, or indeterminate; bounded content and provenance |
 | `Money` | Currency plus exact decimal; unknown is separate from numeric zero |
 | `SessionState` | In-process session ID, turn count/history, aggregate ledger, active-turn ownership; reset never clears liability |
-| `ContextItem` | Kind, provenance, trust, content/reference/hash, order and token allowance |
+| `ContextItem` | Kind, provenance, independent trust/privacy classification, local original/safe-view reference/hash, order and token allowance |
 | `ContextPlan` | Deterministic prompt/projection, pinned units, compaction requirement, source/template hashes |
 
 Do not make every reasoning value a separate record merely to demonstrate sealed interfaces. An enum is appropriate for the current finite effort vocabulary; a sealed policy separates fundamentally different states. Constructors enforce local invariants. Cross-field validation produces actionable configuration errors before paid calls.
@@ -50,7 +50,7 @@ Do not make every reasoning value a separate record merely to demonstrate sealed
 ## Run flow
 
 1. Resolve configuration and immutable catalog snapshot. Validate baseline/fallback and reserve trace storage.
-2. System One classifies the task and selects advisory tool relevance. Trusted operation requirements cannot be relaxed by those answers.
+2. Build a locally approved non-sensitive/synthetic view and apply the privacy gate before classification or paid reservation. System One classifies the task and selects advisory tool relevance. Trusted operation requirements cannot be relaxed by those answers.
 3. Code creates and orders feasible candidates. System One selects one jointly covering model and reasoning; Java validates the result.
 4. Resolve shadow/active execution policy and reserve estimated spend. Invoke one generation request.
 5. Preserve the assistant response and provider continuation data. Validate and authorise proposed tool calls; execute admissible calls serially in MVP.
@@ -66,7 +66,7 @@ See [the coverage map](docs/harness-subsystems.md) for explicit owners and tests
 
 [Context](docs/specs/context.md) defines in-process follow-up, provenance, instruction/prompt assembly and source-safe compaction. [Safety](docs/specs/safety.md) defines the common admission path. [Orchestration](docs/specs/orchestration.md) explicitly disables sub-agents and defines owner/cancellation/no-progress behavior. [Extensibility](docs/specs/extensibility.md) defines compiled-in ports and registry contracts. No subsystem's completeness is inferred merely from a box in this diagram.
 
-Perform context planning before concluding no route can fit: context-only exclusions may trigger admitted summarisation then a bounded candidate rebuild. Every request, including decisions and summaries, follows deterministic authority and hierarchical cost admission. A conversation reset cannot erase session or experiment liabilities.
+Perform context planning before concluding no route can fit: context-only exclusions may trigger admitted summarisation then a bounded candidate rebuild. Every request, including decisions and summaries, follows deterministic authority, [safe-view/final serialisation privacy checks](docs/specs/privacy.md) and hierarchical cost admission. Unknown/restricted content blocks; read access never grants disclosure rights. A conversation reset cannot erase session or experiment liabilities.
 
 ## Important design decisions
 
@@ -77,6 +77,7 @@ Perform context planning before concluding no route can fit: context-only exclus
 - JSONL observability without an event-sourced runtime. [ADR 0005](docs/adr/0005-traces-and-replay.md)
 - Explicit configured pools and shadow-first adoption. [ADR 0006](docs/adr/0006-configuration-and-shadow.md)
 - Seven-area alpha with in-process sessions and continuous build through M2. [ADR 0007](docs/adr/0007-seven-subsystem-alpha.md)
+- Local safe-view/privacy admission before every model operation. [ADR 0008](docs/adr/0008-outbound-privacy.md)
 
 ## Deferred extensions
 

@@ -5,8 +5,8 @@ This roadmap is ordered by evidence and dependencies, not calendar promises. Onl
 | Stage | Product outcome | Dependencies | Exit gate | Status |
 |---|---|---|---|---|
 | M0 Specification foundation | Another session can implement without reconstructing the conversation | Repository access | Indexed requirements, ADRs, acceptance cases, critical review and handoff | Complete |
-| M1 Routing kernel | A text request reaches a fake provider and then real HTTP adapters through legal joint routing | M0 | Slices S01–S05 verified; live smoke run explicit and bounded | Planned |
-| M2 Dogfood alpha | Useful read-only repository assistance, follow-up chat, all seven MVP decisions, packaged CLI | M1 | S06–S12 verified; R01–R24 covered; G01–G10 reported with genuine live evidence or explicit blocker | Planned |
+| M1 Routing kernel | A synthetic text request reaches fake providers and owned HTTP adapters against local recording servers through legal joint routing | M0 | Slices S01–S05 offline contracts verified; real smoke waits for mandatory S06 privacy/admission | Planned |
+| M2 Dogfood alpha | Useful read-only repository assistance, follow-up chat, all seven MVP decisions, packaged CLI | M1 | S06–S12 verified; R01–R25 covered; G01–G10 reported with genuine live evidence or explicit blocker | Planned |
 | M3 Evaluation laboratory | Evidence-based routing control and trace comparison | M2 | Frozen suites, paired evaluations, confidence semantics, promotion decision | Planned |
 | M4 Richer single-agent harness | Streaming, resumability, permissioned writes, skills/MCP | M2 reliability; M3 baseline | Separate specs and failure tests; recovery cannot silently duplicate effects | Exploratory |
 | M5 Native decisions | Java-hosted inference compared with HTTP services | M3 evidence that inference topology matters | Tokenizer/export parity, calibration, packaging, memory and latency comparisons | Exploratory |
@@ -16,7 +16,7 @@ This roadmap is ordered by evidence and dependencies, not calendar promises. Onl
 
 ## M1 and M2 release gates
 
-M1 must have an offline path and independently configurable decision/generation services. It must reject illegal efforts, missing capabilities, empty candidates and out-of-pool fallback. It must distinguish no reasoning, provider default, and explicit effort. Its live adapter smoke checks use a separately bounded test request; the full run ledger and tool lifecycle arrive in M2. Failure tests are more valuable than adding a fifth module.
+M1 must have an offline path and independently configurable decision/generation services. It must reject illegal efforts, missing capabilities, empty candidates and out-of-pool fallback. It must distinguish no reasoning, provider default, and explicit effort. Its adapters are first checked against synthetic local HTTP fixtures. Real smoke is deferred until S06 privacy/authority/admission is implemented, using approved non-sensitive inputs and a separately bounded request; full integrated dogfood waits for S12. Failure tests are more valuable than adding a fifth module.
 
 M2 adds safe read-only dogfooding, in-process follow-up sessions, minimal System One-directed summarisation, trusted prompt assembly, authority and compiled extension contracts. Summaries preserve pinned instructions and tool-call/result integrity. Single-agent-only orchestration is deliberate and tested; M8 is the later delegation stage. Replay inspects recorded inputs and runs pure policies with fakes; it does not regenerate an identical answer. Termination, trace gaps and estimated-cost limitations must be visible.
 

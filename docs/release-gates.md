@@ -8,13 +8,13 @@ Rahu alpha is a usable read-only repository research/review assistant with in-pr
 |---|---|---|
 | G01 Reproducible build | Clean checkout `./mvnw verify`; packaged demo; selected JDK/preview flags and pinned dependencies | Required for offline complete |
 | G02 Legal routing and real protocol contracts | A02–A07; synthetic contract fixtures with provenance; independent adapters | Required for offline complete; real model calls needed in G09 |
-| G03 Tools and deterministic authority | Workspace list/read/search, schema/path/injection and registry tests | Required; high-severity authority defects block release |
+| G03 Tools and deterministic authority | Workspace list/read/search, schema/path/injection and registry tests; A33/A34 safe-view/final transport tests | Required; high-severity authority/privacy defects block release |
 | G04 Context/session usability | Follow-up retains facts, `/reset` behaves safely, compaction fits, trusted inputs/continuation remain correct | Required; no hidden persistence claim |
 | G05 Loop coordination and limits | No-progress/steps/deadline/session budget tests, cancellation cleanup, one active turn, no delegation | Required |
-| G06 Traces/replay | Golden events, gaps/errors, privacy defaults, offline replay of captured synthetic inputs | Required; trace failure cannot become success |
+| G06 Traces/replay | Golden events, gaps/errors, safe diagnostics/export and privacy defaults, offline replay of captured synthetic inputs | Required; trace failure cannot become success |
 | G07 Extension and design quality | Real compiled extension example/tests; dependency boundaries; help/error/JSON/plain-text output review | Required; no speculative plugin platform |
 | G08 Install/run documentation | New developer can build/demo/configure/inspect/run/chat; setup errors actionable; examples/schema checked | Required for operational readiness |
-| G09 Real dogfood smoke | Genuine System One + OpenRouter; configured legal pool; bounded repository Q&A, follow-up, tool and summary evidence | Required only for live dogfood verified; mark blocked if prerequisites absent |
+| G09 Real dogfood smoke | Genuine System One + OpenRouter; configured legal pool; approved non-sensitive inputs/source views; verified privacy gate; bounded repository Q&A, follow-up, tool and summary evidence | Required only for live dogfood verified; mark blocked if prerequisites absent |
 | G10 Release-wide critique | Cross-subsystem review and resolved high-severity findings; requirement-to-test evidence manifest | Required; code presence alone is not evidence |
 
 G01–G08/G10 establish **offline complete**. Adding G09 establishes **live dogfood verified**. M3 promotion establishes **routing optimisation validated** separately. A service outage does not undo offline evidence but cannot be disguised as a passed live gate.
@@ -38,7 +38,7 @@ Do not force the decision model to pick a particular route to call the test succ
 
 Create `docs/reviews/dogfood-release.md` during implementation with date/commit, G01–G10 passed/blocked/failed, acceptance IDs mapped to actual tests/results, exact commands, environment/service/model/adapter versions, costs reported/estimated/unknown, and warnings. Link the seven-area map and slice reviews. Attach sanitised output or fixture references, not private transcripts.
 
-High-severity issues in capability, authority, continuation, duplicate effects, cancellation, ledger reset or trace truthfulness block declaring completion. Lower-severity issues have an owner, impact and next check; do not hide them in a generic 'future improvements' paragraph.
+High-severity issues in privacy, capability, authority, continuation, duplicate effects, cancellation, ledger reset or trace truthfulness block declaring completion. Lower-severity issues have an owner, impact and next check; do not hide them in a generic 'future improvements' paragraph.
 
 ## Scope control
 

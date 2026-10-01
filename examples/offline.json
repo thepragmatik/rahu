@@ -43,5 +43,10 @@
     "directory": ".rahu/runs",
     "capture": "metadata",
     "onFailure": "stop"
+  },
+  "privacy": {
+    "mode": "strict",
+    "onUnknown": "block",
+    "inputClassification": "unknown"
   }
 }

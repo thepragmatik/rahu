@@ -52,3 +52,5 @@ Decision admission uses explicit service cost policy/pricing, independent of the
 ## Real service requirement
 
 Live smoke testing must include one genuine local or hosted decision model. Fakes validate plumbing only. For Laya/Kev, check the deployed checkpoint's supported operations, context limits, device and model routing behavior. Keep model identity returned by the server; a request alias is not proof of which checkpoint served it. Quality and millisecond claims are hypotheses until measured on Rahu's tasks and hardware.
+
+Every projection/candidate/instruction and final serialised decision request must pass [privacy](privacy.md) before admission/dispatch, including local loopback services. A bounded projection alone is not sanitisation. Privacy blocks are terminal/denied policy outcomes, not low-confidence results that trigger a provider fallback.

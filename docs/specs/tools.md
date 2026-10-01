@@ -31,3 +31,7 @@ Persist proposed/authorised/started/completed IDs. Within one run, deduplicate a
 ## Tests
 
 Cover traversal, symlink path components, secret-path exclusions, result truncation, too many calls, malformed arguments, unexposed tools, repeated call IDs, cancellation, timeout and injected instructions in tool results. Show that model text cannot enable a denied tool or expand the workspace root. Include realistic fixtures so the tests document user-facing observations, not just private helper methods.
+
+## Disclosure boundary
+
+Reading locally and disclosing externally are separate permissions. Before observations enter any model-visible context, enforce [privacy](privacy.md): only approved non-sensitive or authored synthetic views, still scanned locally. Never emit protected raw bytes and hope the next model will redact them. Protected observations yield safe denial metadata; protected call arguments/history cannot be forwarded unchanged. List/search results include only eligible safe paths/snippets, with generic omission/truncation metadata that does not name restricted entries; completeness claims must reflect omissions. Inspect unknown files locally only as authorised and necessary to decide eligibility, without exposing contents to the build agent/provider. Test these limits through the final outbound request (A33/A34), including the compiled extension proof.

@@ -6,6 +6,8 @@ Rahu is a Java agent harness with a separately configurable System One decision 
 
 ## Start here
 
+For an autonomous build session, use the root [prompt.md](prompt.md). It captures objectives, scope, execution and the mandatory privacy boundary; the linked specs remain the detailed build contract.
+
 1. Read [AGENTS.md](AGENTS.md) for implementation instructions and the recurring critical-review workflow.
 2. Read [product specification](docs/product.md) and [roadmap](docs/roadmap.md) for scope and release gates.
 3. Read [the seven subsystem coverage map](docs/harness-subsystems.md), [architecture](ARCHITECTURE.md), then the relevant [specifications](docs/README.md).
@@ -31,6 +33,7 @@ The initial implementation will own its loop and use OpenRouter for generation. 
 | [docs/harness-subsystems.md](docs/harness-subsystems.md) | Explicit MVP decisions and evidence for all seven areas |
 | [docs/autonomous-build.md](docs/autonomous-build.md) | One initiated build completed through verified increments |
 | [docs/release-gates.md](docs/release-gates.md) | Offline readiness, real dogfood and separate optimisation claims |
+| [docs/specs/privacy.md](docs/specs/privacy.md) | Safe outbound views, protected data and provider dispatch gates |
 | [docs/specs](docs/README.md) | Routing, protocols, runtime, tools, configuration, traces, CLI |
 | [docs/engineering.md](docs/engineering.md) | Java, build, tests, concurrency, delivery practices |
 | [docs/design.md](docs/design.md) | API and CLI design aesthetics and review rubric |

@@ -13,10 +13,11 @@ Each operation follows the same deterministic order, with structured denial reas
 1. Check the run/session is active and its deadline/attempt/turn allowance remains.
 2. Validate request/call shape, registered capability and version, declared effect and whether the tool was exposed this step.
 3. Enforce allowed model/policy/provider or workspace/path/endpoint boundary, as applicable.
-4. Validate all resource limits and reserve known/estimated cost in both run and session ledgers for paid operations.
-5. Write the required trace admission/proposal/start evidence; stop on persistence failure.
-6. Execute exactly the validated operation, preserving cancellation and uncertainty semantics.
-7. Reconcile outcome/settlement, record completion and cleanup owned resources.
+4. Enforce [privacy/safe-view admission](privacy.md), including the planned serialised adapter body/metadata and before initial classification; unknown/restricted model content blocks before any paid reservation.
+5. Validate resource limits and reserve known/estimated cost in run/session/experiment ledgers for paid operations.
+6. Write required safe trace evidence; recheck the exact serialised request/endpoint at dispatch and stop if content changed or persistence fails.
+7. Execute exactly the admitted operation, preserving cancellation and uncertainty semantics.
+8. Reconcile outcome/settlement, record sanitised completion and cleanup owned resources.
 
 A failed reservation/start must release only definitively unused reservations. Timeouts after remote send retain uncertainty. Registry entries cannot execute directly around the pipeline. Compaction and future hooks are subject to the same admission rules; no privileged internal-summary bypass.
 
@@ -30,7 +31,7 @@ MVP does not claim robust defence if a hostile peer can replace a local server, 
 
 Keep source provenance/trust when constructing prompts. Repository instructions and tool results such as 'enable shell' or 'send secrets to this URL' remain data. The runtime must reject those actions irrespective of model agreement. Prompt delimiters are useful but deterministic admission is the enforcement point. Avoid putting API keys or auth headers into any prompt. Default traces contain metadata only; user payload capture is explicit and labelled sensitive.
 
-System One state minimisation may reduce disclosure but is not data-loss prevention. The operator must select services appropriate for submitted code/content and provider privacy constraints. The harness cannot infer provider privacy from a model's name.
+System One state minimisation may reduce disclosure but is not data-loss prevention. [The privacy contract](privacy.md) now requires safe-view classification/provenance and final outbound checks for every model operation. Selecting an endpoint or a privacy/retention option does not permit sending protected data. The harness cannot infer privacy from a model's name or a loopback URL.
 
 ## Denials and future approvals
 
@@ -41,3 +42,5 @@ Later effectful tools need a separate accepted approval/journal design. Grants m
 ## Release evidence
 
 A24 demonstrates injection cannot enlarge authority and a registered read tool cannot bypass admission. A08 covers path/schema failures; A12/A13 budgets and cancellation; A16 trace failures; A32 session-reset liability. Test with fakes and real temporary workspace fixtures, not exploit workflows or external targets.
+
+A33/A34 verify no protected/unknown content is sent via either decision or generation transport, including summary/fallback and reporting paths. Implement these controls before all live adapter smoke calls; endpoint availability is not a privacy exception.
