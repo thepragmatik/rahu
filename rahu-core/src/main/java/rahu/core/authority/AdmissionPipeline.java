@@ -47,7 +47,7 @@ public final class AdmissionPipeline {
     public Outcome evaluate(ProposedOperation operation, rahu.core.MoneyAmount estimated) {
         // 1: run state must be active
         if (run.isTerminal()) {
-            return new Outcome.Denied(1, "run is terminal");
+            return new Outcome.Denied(1, "run is terminal (phase=" + run.phase() + ")");
         }
         // 2: shape validation
         if (operation.kind() == null || operation.kind().isBlank()
