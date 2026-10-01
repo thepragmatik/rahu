@@ -11,6 +11,8 @@ public sealed interface ReasoningPolicy permits ReasoningPolicy.ProviderDefault,
 
     /** Omit effort controls and accept the documented provider default. */
     record ProviderDefault() implements ReasoningPolicy {
+
+        public static final ProviderDefault INSTANCE = new ProviderDefault();
     }
 
     /** An explicit effort from the supported vocabulary. */
