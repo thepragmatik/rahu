@@ -1,5 +1,6 @@
 package rahu.core.privacy;
 
+import java.net.URI;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -63,20 +64,62 @@ public final class PrivacyGate {
         return new Decision.Admitted();
     }
 
-    /** HTTPS required except explicit loopback (privacy.md transport policy). */
+    /**
+     * HTTPS required except explicit loopback (privacy.md transport policy).
+     *
+     * <p>The loopback exemption is decided by the PARSED host, never by how the
+     * endpoint string begins. A prefix match granted plaintext to
+     * {@code http://localhost.evil.example} and {@code http://127.0.0.1.evil.example},
+     * which are not loopback at all. An unparseable endpoint is refused rather than
+     * guessed at: this check sits on the disclosure path, so an ambiguous URL fails
+     * closed.
+     */
     public static String endpointPolicy(String endpoint) {
         if (endpoint == null || endpoint.isBlank()) {
             return "endpoint-missing";
         }
-        String lower = endpoint.toLowerCase();
-        if (lower.startsWith("https://")) {
+        URI uri;
+        try {
+            uri = URI.create(endpoint.trim());
+        } catch (IllegalArgumentException e) {
+            return "endpoint-policy:unparseable";
+        }
+        String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase();
+        if (scheme.equals("https")) {
             return null;
         }
-        if (lower.startsWith("http://127.0.0.1") || lower.startsWith("http://localhost")
-            || lower.startsWith("http://[::1]")) {
-            return null;
+        if (!scheme.equals("http")) {
+            return "endpoint-policy:non-loopback-plaintext";
         }
-        return "endpoint-policy:non-loopback-plaintext";
+        String host = uri.getHost();
+        if (host == null) {
+            // Opaque or authority-less URI: host is undeterminable, so refuse.
+            return "endpoint-policy:non-loopback-plaintext";
+        }
+        return isLoopbackHost(host.toLowerCase()) ? null
+            : "endpoint-policy:non-loopback-plaintext";
+    }
+
+    /**
+     * True only for a host that IS a loopback address. {@code URI.getHost()} has
+     * already separated the host from userinfo, port and path, so a name that merely
+     * begins with "localhost" or "127.0.0.1" cannot reach here as a match.
+     */
+    private static boolean isLoopbackHost(String host) {
+        if (host.equals("localhost") || host.equals("::1") || host.equals("[::1]")) {
+            return true;
+        }
+        // A dotted-quad in 127.0.0.0/8. Anything with a non-numeric label is not one,
+        // so 127.0.0.1.evil.example cannot be mistaken for an address.
+        if (!host.matches("\\d{1,3}(\\.\\d{1,3}){3}")) {
+            return false;
+        }
+        try {
+            String[] octets = host.split("\\.");
+            return Integer.parseInt(octets[0]) == 127;
+        } catch (NumberFormatException e) {
+            return false;
+        }
     }
 
     /** True when the provenance is eligible in principle (before scanning). */
