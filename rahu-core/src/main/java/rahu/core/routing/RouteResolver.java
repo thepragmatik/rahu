@@ -26,7 +26,10 @@ public final class RouteResolver {
         double confidenceFloor) {
 
         public ResolutionInput {
-            if (confidenceFloor < 0.0 || confidenceFloor > 1.0) {
+            // Positive form, so NaN is rejected. With the old guard a NaN floor made
+            // `chosenProb >= floor` permanently false, rejecting every decision and
+            // degrading the router forever with no error anywhere.
+            if (!(confidenceFloor >= 0.0 && confidenceFloor <= 1.0)) {
                 throw new IllegalArgumentException("confidenceFloor in [0,1]");
             }
         }

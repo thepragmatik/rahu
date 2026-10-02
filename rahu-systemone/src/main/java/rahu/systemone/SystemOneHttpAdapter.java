@@ -46,12 +46,16 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
         this.profile = profile == null ? "jev-compatible-v1" : profile;
         this.timeoutMillis = timeoutMillis;
         this.apiKey = apiKey == null ? () -> Optional.empty() : apiKey;
-        if (endpoint != null && endpoint.startsWith("http://")
-            && !endpoint.startsWith("http://127.0.0.1")
-            && !endpoint.startsWith("http://localhost")
-            && !endpoint.startsWith("http://[::1]")) {
+        // Single source of truth: PrivacyGate.endpointPolicy decides by PARSED HOST.
+        // This class previously carried a second copy of the rule that matched on a
+        // string prefix, so http://localhost.evil.example passed here while the core
+        // policy rejected it -- a fail-open that survived the core fix precisely
+        // because the rule was duplicated. One rule, one owner.
+        String policyViolation = rahu.core.privacy.PrivacyGate.endpointPolicy(endpoint);
+        if (policyViolation != null) {
             throw new IllegalArgumentException(
-                "unencrypted HTTP is permitted only for loopback (systemone.md)");
+                "unencrypted HTTP is permitted only for loopback (systemone.md): "
+                    + policyViolation);
         }
     }
 
@@ -166,6 +170,17 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
             return failuresFor(questions,
                 new DecisionResult.Failure(DecisionResult.FailureKind.MALFORMED,
                     "decision response is not valid JSON"));
+        }
+
+        if (root == null) {
+            // readTree() returns null for a zero-byte body and throws nothing, so the
+            // catch above never runs and root.has(..) below would raise a raw
+            // NullPointerException out of askAll -- losing the whole batch instead of
+            // the one malformed question. An empty body is a protocol fault, not a
+            // parse error, which is why it needs its own arm.
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.MALFORMED,
+                    "decision response body was empty"));
         }
 
         if (root.has("truncated") && root.get("truncated").asBoolean(false)) {

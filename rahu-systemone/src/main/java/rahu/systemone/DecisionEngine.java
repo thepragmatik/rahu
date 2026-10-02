@@ -23,7 +23,10 @@ public interface DecisionEngine {
             if (request != null && request.length() > 16 * 1024) {
                 throw new IllegalArgumentException("state request exceeds 16 KiB bound");
             }
-            if (contextPressure < 0.0 || contextPressure > 1.0) {
+            // NaN fails every comparison, so a negated-range guard would admit it and
+            // Jackson would then write it to the wire as the string "NaN" -- a string
+            // where a number is contracted. Spell the guard as the positive form.
+            if (!(contextPressure >= 0.0 && contextPressure <= 1.0)) {
                 throw new IllegalArgumentException("contextPressure in [0,1]");
             }
         }
@@ -102,8 +105,15 @@ public interface DecisionEngine {
         return result;
     }
 
-    /** Marker interface for questions. */
-    interface Question {
+    /**
+     * Question types. SEALED on purpose: adding a type is a deliberate act that forces
+     * the author to touch the permits clause, and every {@code instanceof} chain over
+     * this interface in this codebase then has an exhaustiveness obligation it can
+     * satisfy at compile time. The historical score-question defect was a documented
+     * type with no implementation, which serialised as {@code {}}; an unsealed marker
+     * interface is what let that stay invisible.
+     */
+    sealed interface Question permits ChoiceQuestion, NoulQuestion, ScoreQuestion {
     }
 
     /** The wire id of a question. */
