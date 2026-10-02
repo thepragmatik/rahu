@@ -1,17 +1,21 @@
 # Dogfood alpha release gate evidence
 
-Date: 2026-10-02. Commit: `626d44a` plus the four fix commits below it
-(`4067ea0`, `ada86eb`, `4002166`, `990647f`). Branch `main`, pushed. This document is
+Date: 2026-10-02. Through `5d81b85`: the N1 fixes (`4067ea0`, `ada86eb`, `4002166`,
+`990647f`), the N1 audit and release manifest (`626d44a`, `0452d97`), and the N2
+failure-typing fixes (`cdef376`, `5d81b85`). Branch `main`, **local only — not pushed.**
+This document is
 the requirement-to-test evidence manifest that `release-gates.md:39` requires and that
 did not previously exist.
 
 ## Headline status
 
-**Offline complete: NOT yet declared.** G01–G08 are individually evidenced below and
-G10 is discharged by `docs/reviews/015-architecture-audit.md`, but four inert
-configuration keys and one re-delivered safety observation were found by the audit on
-2026-10-02. Those are fixed and proven; the declaration waits on a clean
-requirement-to-test pass and on the operator items under G09.
+**Offline complete: NOT yet declared.** G01–G08 are individually evidenced below. G10 is
+discharged by two audits: `015-architecture-audit.md` and
+`016-failure-typing-audit.md`. Between them they found **eleven** defects, five of them
+HIGH — four inert configuration keys, one re-delivered safety observation, three escaped
+exception types, an NPE out of the batch API, and a duplicated security rule that made
+the first fix incomplete. All confirmed ones are fixed and proven. The declaration still
+waits on a clean requirement-to-test pass: A25–A32 are covered by slice reviews only.
 
 **Live dogfood verified: NO.** G09 is blocked on operator authority. It is not blocked on
 a missing service — the hosted decision plane is in use.
@@ -26,7 +30,7 @@ a missing service — the hosted decision plane is in use.
 | JDK | OpenJDK 27 (Homebrew), `maven.compiler.release=27`, preview enabled |
 | Maven | 3.9.9 via `./mvnw` |
 | Modules | `rahu-core`, `rahu-openrouter`, `rahu-systemone`, `rahu-cli` |
-| Test suite | **287 green** (114 core, 14 openrouter, 26 systemone, 133 cli) at `626d44a` |
+| Test suite | **299 green** (122 core, 14 openrouter, 30 systemone, 133 cli) at `5d81b85` |
 | Build command | `export JAVA_HOME=/opt/homebrew/opt/openjdk/libexec/openjdk.jdk/Contents/Home && unset OPENROUTER_API_KEY && ./mvnw clean verify` |
 | Generation adapter | `openrouter`, base `https://openrouter.ai/api/v1` |
 | Decision adapter | `openrouter-decisions`, base `https://openrouter.ai/api/alpha/decisions`, model `typesafe/jev-1.13`, profile `jev-compatible-v1` |
@@ -42,8 +46,8 @@ reports an unresolved compilation problem as a `java.lang.Error` at test time.
 
 | Gate | Status | Evidence |
 |---|---|---|
-| G01 Reproducible build | PASSED | `./mvnw clean verify` → BUILD SUCCESS, 287 tests. Packaged `./bin/rahu --help` exit 0. |
-| G02 Legal routing, real protocol contracts | PASSED | `CandidateFactoryTest`, `RouteResolverTest`, `ModelTypesTest`, `SystemOneAdapterTest`, `ScoreWireMappingTest`, `DecisionBatchAskTest`, `DecisionQuestionsTest`; A02–A07 |
+| G01 Reproducible build | PASSED | `./mvnw clean verify` → BUILD SUCCESS, 299 tests. Packaged `./bin/rahu --help` exit 0. |
+| G02 Legal routing, real protocol contracts | PASSED after fixes | `DecisionPortGuardTest`, `CandidateFactoryTest`, `RouteResolverTest`, `ModelTypesTest`, `SystemOneAdapterTest`, `ScoreWireMappingTest`, `DecisionBatchAskTest`, `DecisionQuestionsTest`; A02–A07 |
 | G03 Tools, deterministic authority | PASSED after fixes | `WorkspaceToolsTest`, `PathBoundaryTest`, `ToolRegistryTest`, `ToolRelevanceGateTest`, `CoreBoundaryTest`, `EndpointPolicyTest`; A08, A33, A34 |
 | G04 Context/session usability | PASSED | `PromptAssemblerTest`, `SessionStateTest`, `CompactionPlannerTest`; A22 |
 | G05 Loop coordination and limits | PASSED | `RunStateMachineTest`, `NoProgressDetectorTest`, `CancellationTest`, `CostGateTest`; A12, A13 |
@@ -55,7 +59,7 @@ reports an unresolved compilation problem as a `java.lang.Error` at test time.
 
 ## Acceptance ID to test map
 
-Every ID below names a test class that exists in the tree at `626d44a`. An ID with no
+Every ID below names a test class that exists in the tree at `5d81b85`. An ID with no
 honest test is marked as such rather than filled in.
 
 | ID | Test class | Note |
@@ -105,6 +109,26 @@ Full detail in `docs/reviews/015-architecture-audit.md`.
 Recorded without a change, each with its proof obligation: F-6 two `confidenceFloor`
 defaults, F-7 `Question` not `sealed`, F-8 transport faults collapsed to `TIMEOUT`, F-9
 `tools.resultBytes` inert.
+
+## The N2 failure-typing audit
+
+A second audit pass, on failure typing and decision-port extensibility, found six more
+defects. Four are fixed; two are recorded with their proof obligations. Full detail,
+including which child claims were **stale**, is in
+[`016-failure-typing-audit.md`](016-failure-typing-audit.md).
+
+| Finding | Severity | Status |
+|---|---|---|
+| F-6 three raw exception types escaped the tool boundary | HIGH | Fixed `cdef376` |
+| F-7 empty decision body threw NPE out of `askAll` | HIGH | Fixed `5d81b85` |
+| F-8 loopback rule duplicated; F-3 fix was incomplete | HIGH | Fixed `5d81b85` |
+| F-9 `Question` unsealed, so `{}` on the wire was still possible | MEDIUM | Fixed `5d81b85` |
+| F-10 NaN passed both `[0,1]` guards | MEDIUM | Fixed `5d81b85` |
+| F-11 `confidenceField` documented and never read | HIGH | **Recorded, not fixed** — needs a wire-contract change |
+
+The theme is the same as N1: a rule or capability that is documented and reachable but
+not actually enforced. F-8 is the sharpest instance — a security rule written twice and
+enforced once, where the first fix passed its tests because the tests covered one copy.
 
 ## G09 — blocked, on whom and on what
 

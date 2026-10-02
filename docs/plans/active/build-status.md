@@ -2,8 +2,8 @@
 
 Last updated: 2026-10-02T21:50+10:00 · HEAD: this commit · main pushed to origin.
 Phases A–F, G1 and G2 complete. G3 stays deferred. **N1 (architecture audit) complete
-and N2/N3 documentation closed this session.** 287 tests green (114 core + 14 openrouter
-+ 26 systemone + 133 cli) at `626d44a`.
+and N2/N3 documentation closed this session.** 299 tests green (122 core + 14 openrouter
++ 30 systemone + 133 cli) at `5d81b85`.
 
 Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED.
 
@@ -48,6 +48,41 @@ Three claims in earlier revisions of this file were false and are now removed:
 Also: `prompt2.md` section 1 states HEAD `0a6f84f`. The real HEAD at audit time was
 `7ae0e48`, one commit later. Every other fact in that table verified, including the
 265-test count at `7ae0e48`.
+
+## N2 (failure-typing audit) — added after the header above
+
+Two independent lens audits (failure typing at every boundary; test quality and
+extensibility at the decision port) found SIX real defects. Four are fixed with
+red-then-green proof in `cdef376` and `5d81b85`; detail and the *stale* claims are in
+`docs/reviews/016-failure-typing-audit.md`.
+
+- F-6 HIGH three raw exception types escaped the tool boundary. A NUL byte threw
+  `InvalidPathException` (and echoed the path back to the model); any locked directory
+  threw `UncheckedIOException` from `Files.walk` — no adversary needed; and an
+  unreadable file during `search` was skipped invisibly, reporting absence of evidence
+  as evidence of absence.
+- F-7 HIGH an empty 200 body threw `NullPointerException` out of `askAll`, killing the
+  whole batch instead of one question. The adjacent literal-`null` case was already
+  typed correctly, so the empty body was worse than the case beside it.
+- F-8 HIGH the loopback rule existed in TWO places; `4002166` fixed the core copy and
+  missed `SystemOneHttpAdapter:49-52`. The core fix survived only because the duplicate
+  was overlooked. Duplicate deleted, shared `PrivacyGate.endpointPolicy` called instead.
+- F-9 MEDIUM `Question` was an unsealed marker interface, so a forgotten type still
+  serialised as `{}`. Now `sealed ... permits`; verified because a hostile type in the
+  new test stopped compiling.
+- F-10 MEDIUM NaN passed both `[0,1]` guards, serialising as the JSON string `"NaN"`
+  and, in `RouteResolver`, rejecting every decision forever with no error.
+- F-11 HIGH `confidenceField` is documented, schema-exposed and **never read**.
+  RECORDED, NOT FIXED: honouring it changes the wire contract and the A06 table. The
+  default path is correct, so only a non-default operator setting is silently ignored.
+
+Also recorded, not fixed: transport faults collapsed to `TIMEOUT`, so a read timeout
+(may have been processed) is indistinguishable from a connect refusal (definitely not).
+
+**Both child reports contained stale findings.** One reported the loopback bug I had
+already fixed; the other caught itself reading a pre-`4067ea0` file. Every claim was
+re-derived from the working tree before acting. That is the practice worth keeping: a
+report naming a real file and line can still describe a file that no longer exists.
 
 ## Next
 
