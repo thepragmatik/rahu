@@ -40,6 +40,7 @@ public final class ToolLoop {
     private final WorkspaceTools workspace;
     private final Provenance provenance;
     private final int maxCallsPerStep;
+    private final List<String> executedCalls = new ArrayList<>();
 
     public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
         ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep) {
@@ -64,10 +65,15 @@ public final class ToolLoop {
         return mapped;
     }
 
-    /** Reasons about the messages; returns the first answer with no pending tool calls. */
+    /**
+     * Reasons about the messages; returns the first answer with no pending tool
+     * calls. The executed-call trail resets at the start of each turn so callers
+     * only see this turn's activity.
+     */
     public ModelOutcome generate(ModelRef model, ReasoningPolicy policy,
         List<ChatMessage> messages, int maxCompletionTokens) {
 
+        executedCalls.clear();
         List<ChatMessage> conversation = new ArrayList<>(messages);
         for (int round = 0; round <= maxCallsPerStep; round++) {
             var request = new GenerationRequest(model, policy, conversation,
@@ -88,6 +94,14 @@ public final class ToolLoop {
         }
         return new ModelOutcome.Failed(ModelOutcome.Failed.FailureKind.INVALID_REQUEST,
             "tool step limit reached without a final answer", null);
+    }
+
+    /**
+     * Tools executed for the current turn, in order ("name argSummary"); stderr
+     * observability, safe values only.
+     */
+    public List<String> executedCalls() {
+        return List.copyOf(executedCalls);
     }
 
     /**
@@ -126,11 +140,18 @@ public final class ToolLoop {
         } catch (ToolCallLog.ProtocolError e) {
             result = ToolResult.failed("protocol violation: " + e.getMessage());
         }
+        executedCalls.add(call.name() + " " + summarize(canonical));
         return switch (result.status()) {
             case SUCCESS -> result.content();
             case DENIED -> "denied: " + result.content();
             case INVALID -> "invalid: " + result.content();
             case FAILED -> "failed: " + result.content();
         };
+    }
+
+    /** Short single-line argument echo for the stderr trail; safe/conservative. */
+    private static String summarize(String canonicalArgs) {
+        String flat = canonicalArgs.replace('\n', ' ').strip();
+        return flat.length() <= 120 ? flat : flat.substring(0, 117) + "...";
     }
 }
