@@ -121,6 +121,14 @@ public final class LiveTurnDriver {
                     + "); nothing was sent");
                 return 4;
             }
+
+            // 2a. Deterministic prompt assembly and context pressure (the
+            //     documented conservative estimate over history + this request).
+            var plan = assembler.assemble(List.of(), session.history(),
+                ChatMessage.user(line), allowance);
+            double pressure = Math.min(1.0,
+                plan.estimatedTokens() / (double) plan.contextAllowanceTokens());
+
             String note = shadowDecision(decision, cfg, line);
             if (note != null) {
                 err.println("decision (shadow, " + cfg.decision().model() + "): " + note);
@@ -131,9 +139,7 @@ public final class LiveTurnDriver {
             //     It must never block the baseline; any failure degrades closed.
             TurnProfile profile = null;
             try {
-                // Context pressure estimation arrives with the compaction track;
-                // until then the honest value is 0.0 (fresh, small history).
-                profile = new ProfileDecider(decision, PERMITTED_TOOLS).decide(line, 0.0);
+                profile = new ProfileDecider(decision, PERMITTED_TOOLS).decide(line, pressure);
             } catch (RuntimeException e) {
                 err.println("profile: unavailable (" + e.getClass().getSimpleName() + ")");
             }
@@ -143,9 +149,20 @@ public final class LiveTurnDriver {
                     + " degraded=" + profile.degraded());
             }
 
-            // 3. Assemble the real prompt and re-check the exact outbound text.
-            var plan = assembler.assemble(List.of(), session.history(),
-                ChatMessage.user(line), allowance);
+            // 2c. COMPACTION_POLICY at the 80% trigger (docs/specs/context.md).
+            //     Code owns control flow: the decision only picks the policy, the
+            //     deterministic fit check overrides, and context is never dropped
+            //     without an executed summary (summary execution is the
+            //     summarisation track; this records the decision and the plan).
+            if (pressure >= 0.80) {
+                var consult = new CompactionPolicyDecider(decision)
+                    .consult(session.history(), allowance);
+                err.println("compaction: policy=" + consult.policy().name().toLowerCase(Locale.ROOT)
+                    + " pressure=" + String.format(Locale.ROOT, "%.2f", pressure)
+                    + " — " + consult.safeNote());
+            }
+
+            // 3. Re-check the exact outbound text (assembled above).
             var outbound = new StringBuilder();
             for (ChatMessage message : plan.messages()) {
                 outbound.append(message.content()).append('\n');
