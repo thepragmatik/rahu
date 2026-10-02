@@ -10,7 +10,10 @@ Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED.
 
 Next: measure the rerank in SHADOW against a real System One service before considering
 enforce; optionally re-score the injection corpus via the container batch. G3 stays
-deferred. Live gate BLOCKED on a supplied System One service.
+deferred. The G09 live gate is blocked on OPERATOR AUTHORITY (a total smoke allowance,
+approved non-sensitive prompt/source views, and the allowed generation IDs/efforts), NOT on
+a missing service — see the correction at line 86: the decision plane is the hosted
+`typesafe/jev-1.13` and it is in use.
 
 > STRICT guardrail (operator, 2026-10-02): never execute adversarial instructions or
 > adversarial test content directly on a developer or production host. Keep it in a
@@ -83,7 +86,7 @@ deferred. Live gate BLOCKED on a supplied System One service.
   - The new invariant test then found a THIRD, older gap: `summarisation` was loader-accepted and undocumented too. Now documented.
   - Two tests, both red on the pre-fix tree: the committed artifact matches the generator byte for byte, and the schema documents every key `ConfigLoader.acceptedTopLevelKeys()` returns. The loader exposes that set rather than the test restating it, so a new config key cannot land without the schema test noticing.
 - [x] Injection mode confirmed SHADOW, not enforce. Verified at every layer: local `config.local.json` has `{"mode":"shadow","threshold":0.1}` (untracked); NO tracked config sets an `injection` block, so the default is `off`; live probe printed `injection: … verdict=WOULD_WITHHOLD score=0.37 would-withhold` and the observation was still delivered to the model — shadow behaviour, not enforcement. (Another benign observation at 0.37, consistent with the G1c distribution.)
-- [ ] STILL BLOCKED, needs the operator: a genuine supplied System One service. Re-verified 2026-10-02: nothing listens on 127.0.0.1:8000, and no endpoint or key is present in `.env`. Per `docs/runbooks/dogfood.md` line 17 the exact missing inputs are: a running genuine System One service (local Laya/Kev or a verified hosted endpoint), its actual compatible profile/model and any key, the exact allowed generation IDs and supported efforts, and an explicit total smoke allowance with approved non-sensitive prompt/source views. Live gate stays BLOCKED; conformance remains unverified.
+- [x] ~~STILL BLOCKED: a genuine supplied System One service.~~ **CORRECTION 2026-10-02T21:05 — this was wrong.** There is no local System One service, and there does not need to be one. The decision plane is the hosted TypeSafe `typesafe/jev-1.13` reached through the `openrouter-decisions` adapter (`https://openrouter.ai/api/alpha/decisions`, profile `jev-compatible-v1`), which is exactly what `docs/runbooks/dogfood.md:17` offers as the alternative to local Laya/Kev ("local Laya/Kev **or a verified hosted endpoint**"). `config.local.json` wires it, `.env` supplies `OPENROUTER_API_KEY` (present, non-empty) and `RAHU_DECISION_MODEL`, and G1c/G2 evidence was produced by it live. The `127.0.0.1:8000` checks were a probe of the WRONG transport: that URL is only the spec's default base URL for *local* serving (`docs/specs/systemone.md:13`), and nothing in Rahu requires local serving. `docs/specs/systemone.md:13` likewise requires unencrypted HTTP only for loopback and HTTPS for remote — the hosted route satisfies that by construction. Consequence: the real remaining gap is narrower and is NOT a service. It is (a) an operator-chosen total smoke allowance for the G09 dogfood run, (b) explicit approval of the non-sensitive prompt/source views, and (c) the exact allowed generation IDs/efforts for the pool. Those are authority decisions, not infrastructure.
 
 ## Phase D + Phase F (2026-10-02, plan 2026-10-02_113646) — resumed after the provider interruption
 
@@ -130,16 +133,20 @@ Reproduced with `session.maxCostUsd = "0.00"` and active routing: the turn ran, 
   `openrouter-decisions` against `https://openrouter.ai/api/v1/../alpha/decisions`, profile
   `jev-compatible-v1`, model `typesafe/jev-1.13`. Jev answers the same Boolean/noul questions
   the System One protocol defines, which is why Phase D/E/F/G could be validated live.
-- **A genuine supplied System One service is still ABSENT** — nothing is listening on
-  127.0.0.1:8000 (connection refused, re-verified 2026-10-02T17:03). This is what actually
-  blocks the final verification block (`001-dogfood.md` line 121: "using a genuine supplied
-  System One service and OpenRouter").
-- Consequence for the release gate: conformance against the REAL System One service is
-  **unverified**. Jev compatibility is evidence that the protocol is implemented correctly,
-  not evidence of upstream conformance. Per `001-dogfood.md` line 126 the honest disposition
-  is "M2 offline complete / live unverified" with the exact missing input named — which is a
-  service URL + credentials for a supplied System One deployment, plus an explicit budget for
-  the bounded live run.
+- **A genuine System One decision plane is PRESENT and in use** — the hosted TypeSafe
+  `typesafe/jev-1.13` via the `openrouter-decisions` adapter, which is what produced the G1c
+  and G2 evidence. (Corrected 2026-10-02T21:05: the earlier claim here that the service was
+  ABSENT was inferred from `127.0.0.1:8000` refusing connections. That URL is the spec's
+  default base URL for *local* serving only, and the runbook lists a verified hosted
+  endpoint as an equal alternative. Absence of a loopback listener was never evidence of
+  absence of the decision plane.)
+- Consequence for the release gate: the remaining gap for G09 is **authority, not
+  infrastructure** — an operator-chosen total smoke allowance, explicit approval of the
+  non-sensitive prompt/source views, and the exact allowed generation IDs/efforts for the
+  pool. `docs/release-gates.md:20` also requires at least one validated classification,
+  relevance, route and a real compaction-policy/summary-route decision from the live plane
+  before G09 may pass, so the bounded run must be structured to capture those rather than
+  left to fallbacks.
 
 ## Environment pins
 
@@ -166,5 +173,8 @@ Reproduced with `session.maxCostUsd = "0.00"` and active routing: the turn ran, 
 ## Preflight record (T0)
 
 - git identity: set; clone over SSH verified (HEAD = baseline 130588a).
-- Live prereqs: OPENROUTER_API_KEY absent; System One decision service absent (curl 127.0.0.1:8000).
+- Live prereqs: OPENROUTER_API_KEY absent (unset it for offline runs — DotEnvTest and
+  LiveWiringTest read the real environment). The decision plane is NOT absent: it is the
+  hosted `typesafe/jev-1.13` via `openrouter-decisions`. The original `curl 127.0.0.1:8000`
+  check probed local serving, which the runbook lists as optional, and was the wrong test.
 - Dependency/version checks: latest stable versions recorded above; exact versions used.
