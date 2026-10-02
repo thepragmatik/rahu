@@ -41,6 +41,8 @@ public sealed interface ModelOutcome {
 
         public enum FailureKind {
             AUTH_REJECTED, INVALID_REQUEST, RATE_LIMITED, TIMEOUT, NETWORK,
+        /** Loop-side, not provider-side: a tool call repeated with an unchanged outcome. */
+        NO_PROGRESS,
             REFUSAL, EMPTY_RESPONSE, MALFORMED_RESPONSE, SERVER_ERROR, UNKNOWN
         }
     }

@@ -49,6 +49,8 @@ public final class ToolLoop {
     private final InjectionGate injection;
     private final SearchReranker reranker;
     private final int maxCallsPerStep;
+    private final rahu.core.runtime.NoProgressDetector noProgress =
+        new rahu.core.runtime.NoProgressDetector();
     private final List<String> executedCalls = new ArrayList<>();
     private final List<InjectionJudgment> injectionJudgments = new ArrayList<>();
     private SearchReranker.Result lastRerank;
@@ -192,7 +194,28 @@ public final class ToolLoop {
                 conversation.add(ChatMessage.tool(completed.proposedToolCalls().get(i).id(),
                     judged.get(i).text()));
             }
+
+            // NO_PROGRESS guard. Found by a live dogfood turn that re-issued one
+            // failing read 14 times: the batch fingerprint never matched itself
+            // because the rest of the batch varied, so the loop only stopped at
+            // maxCallsPerStep, having spent real tokens on a call that could never
+            // succeed. Each call's digest is its OWN observation text, not the
+            // batch digest, so a single stuck call is caught even when batched
+            // with changing work.
+            var perCall = new java.util.LinkedHashMap<String, String>();
+            var batchText = new StringBuilder();
+            for (int i = 0; i < judged.size(); i++) {
+                String text = judged.get(i).text();
+                perCall.put(completed.proposedToolCalls().get(i).id(), text);
+                batchText.append(text).append('\u0000');
+            }
+            if (noProgress.recordBatch(completed.proposedToolCalls(), perCall,
+                    batchText.toString())) {
+                return new ModelOutcome.Failed(ModelOutcome.Failed.FailureKind.NO_PROGRESS,
+                    "no progress: a tool call repeated with an unchanged outcome", null);
+            }
         }
+        noProgress.newTurn();
         return new ModelOutcome.Failed(ModelOutcome.Failed.FailureKind.INVALID_REQUEST,
             "tool step limit reached without a final answer", null);
     }
