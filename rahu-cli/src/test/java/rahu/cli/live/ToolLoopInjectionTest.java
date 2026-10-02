@@ -115,11 +115,15 @@ class ToolLoopInjectionTest {
     }
 
     /** What the model actually read back as the tool observation. */
-    private static String observedByModel(ScriptedProvider provider) {
-        return provider.lastConversation.stream()
+    private static String observedByModel(List<ChatMessage> conversation) {
+        return conversation.stream()
             .filter(m -> m.role() == ChatMessage.Role.TOOL)
             .map(ChatMessage::content)
             .reduce("", (a, b) -> a + b);
+    }
+
+    private static String observedByModel(ScriptedProvider provider) {
+        return observedByModel(provider.lastConversation);
     }
 
     @Test
@@ -140,7 +144,7 @@ class ToolLoopInjectionTest {
         var engine = new RecordingEngine(Map.of("injection:tool-obs-call-1", risk(0.95)));
         var provider = drive(new InjectionGate(engine, InjectionGate.Mode.ENFORCE, 0.10),
             new Provenance.ApprovedNonSensitive("test"));
-        String seen = observedByModel(provider);
+        String seen = observedByModel(provider.lastConversation);
         assertFalse(seen.contains(POISON), "poisoned text must not reach the model");
         assertFalse(seen.contains("attacker"), "no fragment of the payload may leak");
         assertTrue(seen.contains("withheld"), "the model must be told it was withheld: " + seen);
@@ -177,5 +181,88 @@ class ToolLoopInjectionTest {
         var provider = drive(new InjectionGate(engine, InjectionGate.Mode.ENFORCE, 0.10),
             new Provenance.ApprovedNonSensitive("test"));
         assertTrue(observedByModel(provider).contains(POISON));
+    }
+
+    // ---- batched judging across a multi-call turn ----
+
+    /** Provider that proposes TWO tool calls in its first turn, then answers. */
+    private static final class TwoCallProvider implements ModelProvider {
+        List<ChatMessage> lastConversation;
+
+        @Override
+        public ModelOutcome generate(GenerationRequest request) {
+            lastConversation = new ArrayList<>(request.messages());
+            if (request.messages().stream().noneMatch(m -> m.role() == ChatMessage.Role.TOOL)) {
+                return new ModelOutcome.Completed("", List.of(
+                    new ToolCall("call-1", "workspace.read", "{\"path\":\"notes.md\"}"),
+                    new ToolCall("call-2", "workspace.read", "{\"path\":\"benign.md\"}")),
+                    new rahu.core.model.Usage(10, 5, null, 0L), "tool_calls",
+                    Optional.empty(), Optional.empty(),
+                    rahu.core.model.ContinuationEnvelope.empty("test"));
+            }
+            return new ModelOutcome.Completed("done", List.of(),
+                new rahu.core.model.Usage(20, 5, null, 0L), "stop", Optional.empty(),
+                Optional.empty(), rahu.core.model.ContinuationEnvelope.empty("test"));
+        }
+    }
+
+    @Test
+    @DisplayName("Two tool calls in one turn cost ONE decision dispatch, not one each")
+    void multiCallTurnBatchesIntoOneDispatch() throws Exception {
+        poisonFile();
+        Files.writeString(root.resolve("benign.md"), "# benign\n\npackage rahu.core;\n");
+        var engine = new RecordingEngine(Map.of(
+            "injection:tool-obs-call-1",
+                new DecisionResult.ValidNoul("injection:tool-obs-call-1", true, Optional.of(0.95)),
+            "injection:tool-obs-call-2",
+                new DecisionResult.ValidNoul("injection:tool-obs-call-2", false, Optional.of(0.01))));
+
+        var boundary = new PathBoundary(root);
+        var provider = new TwoCallProvider();
+        var loop = new ToolLoop(ToolRegistry.withWorkspace(boundary), boundary, provider,
+            new ToolCallLog(), new PrivacyGate(),
+            new Provenance.ApprovedNonSensitive("test"), 4,
+            new InjectionGate(engine, InjectionGate.Mode.ENFORCE, 0.10));
+        loop.generate(new ModelRef("test/model"), ReasoningPolicy.ProviderDefault.INSTANCE,
+            List.of(ChatMessage.user("read both files")), 256);
+
+        assertEquals(1, engine.asks,
+            "a turn with two observations must dispatch once, not once per observation");
+        // Both observations were still judged, each on its own answer.
+        assertEquals(2, loop.injectionJudgments().size(),
+            "batching must not skip an observation");
+        String seen = observedByModel(provider.lastConversation);
+        assertFalse(seen.contains(POISON), "the poisoned observation is still withheld");
+        assertTrue(seen.contains("package rahu.core;"), "the benign one still arrives");
+    }
+
+    @Test
+    @DisplayName("Batching withholds the poisoned observation but not its innocent sibling")
+    void batchingKeepsPerObservationConsequences() throws Exception {
+        poisonFile();
+        Files.writeString(root.resolve("benign.md"), "# benign\n\npackage rahu.core;\n");
+        var engine = new RecordingEngine(Map.of(
+            "injection:tool-obs-call-1",
+                new DecisionResult.ValidNoul("injection:tool-obs-call-1", true, Optional.of(0.95)),
+            "injection:tool-obs-call-2",
+                new DecisionResult.ValidNoul("injection:tool-obs-call-2", true, Optional.of(0.95))));
+
+        var boundary = new PathBoundary(root);
+        var provider = new TwoCallProvider();
+        var loop = new ToolLoop(ToolRegistry.withWorkspace(boundary), boundary, provider,
+            new ToolCallLog(), new PrivacyGate(),
+            new Provenance.ApprovedNonSensitive("test"), 4,
+            new InjectionGate(engine, InjectionGate.Mode.ENFORCE, 0.10));
+        loop.generate(new ModelRef("test/model"), ReasoningPolicy.ProviderDefault.INSTANCE,
+            List.of(ChatMessage.user("read both files")), 256);
+
+        // Both hit the threshold, so both are withheld - and the benign file's text is
+        // NOT smuggled through alongside the denial.
+        String seen = observedByModel(provider.lastConversation);
+        assertFalse(seen.contains(POISON));
+        assertFalse(seen.contains("package rahu.core;"),
+            "a withheld observation must not leak through a sibling's answer");
+        assertTrue(loop.injectionJudgments().stream()
+            .allMatch(j -> j.disposition().wouldHaveWithheld()));
     }
 }

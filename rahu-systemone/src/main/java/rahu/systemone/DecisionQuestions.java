@@ -58,6 +58,21 @@ public final class DecisionQuestions {
         return new DecisionEngine.NoulQuestion(injectionQuestionId(observationId));
     }
 
+    /**
+     * INJECTION_RISK for a batch: one Boolean per observation, all in ONE dispatch.
+     * Same questions {@link #injectionRisk(String)} would build individually; the
+     * batch form exists so a tool turn with several observations costs one dispatch
+     * instead of one each. Per-question isolation still applies, so an unanswerable
+     * observation never fails its siblings.
+     */
+    public static List<DecisionEngine.NoulQuestion> injectionRisk(List<String> observationIds) {
+        List<DecisionEngine.NoulQuestion> questions = new ArrayList<>();
+        for (String observationId : observationIds) {
+            questions.add(injectionRisk(observationId));
+        }
+        return questions;
+    }
+
     /** The wire id of an injection question; shared by the builder and its caller. */
     public static String injectionQuestionId(String observationId) {
         return "injection:" + observationId;

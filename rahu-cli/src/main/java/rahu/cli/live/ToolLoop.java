@@ -1,6 +1,7 @@
 package rahu.cli.live;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 import rahu.core.ModelRef;
@@ -108,8 +109,14 @@ public final class ToolLoop {
             }
 
             conversation.add(ChatMessage.assistantWithToolCalls(completed.proposedToolCalls()));
-            for (ToolCall call : completed.proposedToolCalls()) {
-                conversation.add(ChatMessage.tool(call.id(), observe(call)));
+            // Execute every call first, then judge the resulting observations in ONE
+            // dispatch. Judging per observation meant a decision-plane call (and its
+            // latency and spend) for every tool result in the turn; the questions are
+            // independent, so they share a request the way ProfileDecider already does.
+            List<Observation> judged = observeAll(completed.proposedToolCalls());
+            for (int i = 0; i < completed.proposedToolCalls().size(); i++) {
+                conversation.add(ChatMessage.tool(completed.proposedToolCalls().get(i).id(),
+                    judged.get(i).text()));
             }
         }
         return new ModelOutcome.Failed(ModelOutcome.Failed.FailureKind.INVALID_REQUEST,
@@ -125,35 +132,75 @@ public final class ToolLoop {
     }
 
     /**
-     * Executes one call; every failure becomes data the model can read, never an
-     * exception. Protected observations yield generic safe-denial metadata, never
-     * the offending value. An observation the privacy gate admitted is then judged
-     * for injection risk: in ENFORCE a would-withhold observation is replaced with
-     * denial metadata before it becomes model-visible, in SHADOW the judgment is
-     * only recorded.
+     * Executes every call of a turn, then judges the observations that survived the
+     * privacy gate in ONE batched dispatch. Two phases on purpose: the decision plane
+     * must see the whole turn's observations at once to batch them, and an observation
+     * the privacy gate refused is never judged (the overlay must not become a
+     * disclosure bypass, and a refused observation has no text to judge).
+     *
+     * <p>A call that needs no judgment — unknown tool, refused arguments, refused
+     * observation — passes through with its denial metadata and is left out of the
+     * batch. The returned list is one entry per input call, in order.
      */
-    private String observe(ToolCall call) {
-        var tool = registry.find(call.name());
-        if (tool.isEmpty()) {
-            return "denied: unknown tool " + call.name();
+    private List<Observation> observeAll(List<ToolCall> calls) {
+        // Phase 1: execute and run the privacy gate, collecting judgeable text.
+        var pending = new ArrayList<InjectionGate.Observation>();
+        var texts = new ArrayList<String>();
+        var judgeable = new boolean[calls.size()];
+        for (int i = 0; i < calls.size(); i++) {
+            ToolCall call = calls.get(i);
+            String observationId = "tool-obs-" + call.id();
+            var tool = registry.find(call.name());
+            if (tool.isEmpty()) {
+                texts.add("denied: unknown tool " + call.name());
+                continue;
+            }
+            String canonical = CanonicalJson.canonicalize(call.argumentsJson());
+            if (gate.admitForDecision(SafeView.of("tool-arg-" + call.id(), provenance, canonical))
+                instanceof PrivacyGate.Decision.Blocked blocked) {
+                texts.add("denied: arguments not admitted (privacy: " + blocked.category() + ")");
+                continue;
+            }
+            String observation = observationOf(call, canonical);
+            if (gate.admitForDecision(SafeView.of(observationId, provenance, observation))
+                instanceof PrivacyGate.Decision.Blocked blocked) {
+                texts.add("denied: observation withheld (privacy: " + blocked.category() + ")");
+                continue;
+            }
+            judgeable[i] = true;
+            pending.add(new InjectionGate.Observation(observationId, observation));
+            texts.add(observation);
         }
-        String canonical = CanonicalJson.canonicalize(call.argumentsJson());
-        if (gate.admitForDecision(SafeView.of("tool-arg-" + call.id(), provenance, canonical))
-            instanceof PrivacyGate.Decision.Blocked blocked) {
-            return "denied: arguments not admitted (privacy: " + blocked.category() + ")";
+
+        // Phase 2: one dispatch for the whole turn. In ENFORCE a would-withhold
+        // observation is replaced with denial metadata before it becomes model-visible;
+        // in SHADOW the judgment is only recorded.
+        List<InjectionGate.Disposition> dispositions =
+            injection.assessAll(pending);
+        var byId = new LinkedHashMap<String, InjectionGate.Disposition>();
+        for (int i = 0; i < pending.size(); i++) {
+            byId.put(pending.get(i).id(), dispositions.get(i));
         }
-        String observation = observationOf(call, canonical);
-        String observationId = "tool-obs-" + call.id();
-        if (gate.admitForDecision(SafeView.of(observationId, provenance, observation))
-            instanceof PrivacyGate.Decision.Blocked blocked) {
-            return "denied: observation withheld (privacy: " + blocked.category() + ")";
+
+        // Phase 3: apply each observation's own consequence, in call order.
+        var out = new ArrayList<Observation>(calls.size());
+        for (int i = 0; i < calls.size(); i++) {
+            if (!judgeable[i]) {
+                out.add(new Observation(texts.get(i)));
+                continue;
+            }
+            String observationId = "tool-obs-" + calls.get(i).id();
+            var disposition = byId.get(observationId);
+            injectionJudgments.add(new InjectionJudgment(observationId, disposition));
+            out.add(new Observation(disposition.withholds()
+                ? "denied: observation withheld (injection risk)"
+                : texts.get(i)));
         }
-        var disposition = injection.assess(observationId, observation);
-        injectionJudgments.add(new InjectionJudgment(observationId, disposition));
-        if (disposition.withholds()) {
-            return "denied: observation withheld (injection risk)";
-        }
-        return observation;
+        return List.copyOf(out);
+    }
+
+    /** One call's model-visible observation text. */
+    private record Observation(String text) {
     }
 
     /**

@@ -1,6 +1,8 @@
 package rahu.cli.live;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import rahu.core.decision.DecisionResult;
 import rahu.systemone.DecisionEngine;
@@ -61,6 +63,14 @@ public final class InjectionGate {
     /** DecisionEngine.State rejects a request past 16 KiB; observations can exceed it. */
     private static final int MAX_OBSERVATION_CHARS = 16 * 1024;
 
+    /**
+     * Per-observation share of the 16 KiB state bound when several observations share
+     * one request. The bound is on the REQUEST, so batching N observations divides it
+     * between them; without a share, one long observation would consume the whole
+     * budget and silently starve its siblings into unjudgeable.
+     */
+    private static final int MAX_BATCHED_OBSERVATION_CHARS = 4 * 1024;
+
     private final DecisionEngine decision;
     private final Mode mode;
     private final double threshold;
@@ -115,5 +125,101 @@ public final class InjectionGate {
         }
         return observation.length() <= MAX_OBSERVATION_CHARS ? observation
             : observation.substring(0, MAX_OBSERVATION_CHARS);
+    }
+
+    /** One observation to judge, paired with the id its answer is keyed by. */
+    public record Observation(String id, String text) {
+
+        public Observation {
+            if (id == null || id.isBlank()) {
+                throw new IllegalArgumentException("observation id required");
+            }
+            text = text == null ? "" : text;
+        }
+    }
+
+    /**
+     * Judges several observations in ONE dispatch: the batched sibling of
+     * {@link #assess(String, String)}, and the reason a tool turn costs one decision
+     * call instead of one per observation. Answers come back keyed by observation id,
+     * so the verdicts are the same ones {@code assess} would have produced; only the
+     * number of dispatches changes.
+     *
+     * <p>Two honest costs of sharing a request, both accepted deliberately:
+     *
+     * <ul>
+     *   <li><b>Observations see each other.</b> Untrusted text now travels together, so
+     *       one observation could in principle colour the judgment of another. The
+     *       per-observation delimiter keeps them textually separate, and the questions
+     *       are still one-per-observation — but this is a real reduction in isolation
+     *       versus judging each alone, and it is the price of the saved dispatches.
+     *   <li><b>The 16 KiB state bound is shared.</b> Each observation is truncated to
+     *       {@link #MAX_BATCHED_OBSERVATION_CHARS} so a batch cannot overflow the bound
+     *       and throw. A single oversized observation therefore gets less text than it
+     *       would alone; {@link #assess} keeps the full 16 KiB for that reason.
+     * </ul>
+     *
+     * <p>Fails closed exactly as the single path does: a transport failure or a
+     * missing/failed answer makes that observation {@link Verdict#UNJUDGEABLE} and
+     * withholds nothing, and one bad observation never fails its siblings.
+     *
+     * @return a disposition per input observation, in the same order
+     */
+    public List<Disposition> assessAll(List<Observation> observations) {
+        if (observations == null || observations.isEmpty()) {
+            return List.of();
+        }
+        if (mode == Mode.OFF) {
+            return observations.stream()
+                .map(o -> new Disposition(Verdict.OFF, Optional.empty(), mode)).toList();
+        }
+        var ids = observations.stream().map(Observation::id).toList();
+        var request = batchRequest(observations);
+        Map<String, DecisionResult> answers;
+        try {
+            var state = new DecisionEngine.State("INJECTION_RISK", request, 0.0);
+            answers = decision.askAll(state,
+                DecisionQuestions.injectionRisk(ids).stream()
+                    .map(q -> (DecisionEngine.Question) q).toList());
+        } catch (RuntimeException e) {
+            return unjudgeableAll(observations.size());
+        }
+        List<Disposition> out = new ArrayList<>(observations.size());
+        for (String id : ids) {
+            DecisionResult answer = answers.get(DecisionQuestions.injectionQuestionId(id));
+            out.add(dispositionOf(answer));
+        }
+        return List.copyOf(out);
+    }
+
+    /** Per-observation mapping, identical to the single-observation path. */
+    private Disposition dispositionOf(DecisionResult answer) {
+        if (!(answer instanceof DecisionResult.ValidNoul noul)) {
+            return new Disposition(Verdict.UNJUDGEABLE, Optional.empty(), mode);
+        }
+        double score = noul.probability().orElse(noul.value() ? 1.0 : 0.0);
+        Verdict verdict = score >= threshold ? Verdict.WOULD_WITHHOLD : Verdict.BELOW_THRESHOLD;
+        return new Disposition(verdict, noul.probability(), mode);
+    }
+
+    private List<Disposition> unjudgeableAll(int count) {
+        return java.util.Collections.nCopies(count,
+            new Disposition(Verdict.UNJUDGEABLE, Optional.empty(), mode));
+    }
+
+    /**
+     * Joins observations into one request with an explicit per-observation delimiter.
+     * The delimiter names the id the question is keyed by, so a decision model reading
+     * the batch can tell whose text it is judging. Always under the 16 KiB bound.
+     */
+    private static String batchRequest(List<Observation> observations) {
+        StringBuilder sb = new StringBuilder();
+        for (Observation o : observations) {
+            sb.append("### observation ").append(o.id()).append('\n');
+            String text = o.text();
+            sb.append(text.length() <= MAX_BATCHED_OBSERVATION_CHARS ? text
+                : text.substring(0, MAX_BATCHED_OBSERVATION_CHARS)).append('\n');
+        }
+        return sb.toString();
     }
 }
