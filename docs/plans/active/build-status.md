@@ -1,9 +1,11 @@
 # Build status
 
-Last updated: 2026-10-02T17:03+10:00 · HEAD: 4027bd8 · Track T + Track D merged, Phases A–F
-complete, Phase G1 built and SHADOW-ONLY (do not enforce — see G1c). 211 tests green.
-Next: the cost-gate finding (pre-dispatch reservation), then G1 follow-ups (batched injection
-questions per turn; 50-observation corpus), then G2 (search rerank). G3 stays deferred.
+Last updated: 2026-10-02T17:42+10:00 · HEAD: 31c7b2d · Track T + Track D merged, Phases A–F
+complete, Phase G1 built and SHADOW-ONLY (do not enforce — see G1c). 215 tests green.
+Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED. 68 revisions are on
+origin/feat/m2-decision-plane-and-tools with PR #1 open; main itself is still unpushed.
+Next: G1 follow-ups (batched injection questions per turn; 50-observation corpus), then G2
+(search rerank). G3 stays deferred. Live gate BLOCKED on a supplied System One service.
 
 > Correction 2026-10-02T17:03: this header previously read `HEAD: a84ab64 (F3b)` and
 > "Next: F3c", which was three phases stale. Corrected to the real HEAD and the real queue.
