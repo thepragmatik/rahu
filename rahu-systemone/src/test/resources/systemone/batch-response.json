@@ -1,0 +1,26 @@
+{
+  "model": "demo-decision",
+  "answers": {
+    "taskClass": {
+      "type": "choice",
+      "choice": "coding",
+      "probabilities": {
+        "answer": 0.05,
+        "coding": 0.90,
+        "analysis": 0.02,
+        "classification": 0.01,
+        "summarisation": 0.01,
+        "unknown": 0.01
+      },
+      "confidence": 0.8
+    },
+    "tool:workspace.read": {
+      "type": "noul",
+      "noul": 0.9
+    },
+    "tool:workspace.search": {
+      "type": "noul",
+      "noul": 0.2
+    }
+  }
+}

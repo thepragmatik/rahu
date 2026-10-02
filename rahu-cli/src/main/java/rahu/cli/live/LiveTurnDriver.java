@@ -4,6 +4,7 @@ import java.io.PrintWriter;
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Scanner;
 import java.util.function.Function;
@@ -16,6 +17,7 @@ import rahu.core.ReasoningPolicy;
 import rahu.core.context.PromptAssembler;
 import rahu.core.context.SessionState;
 import rahu.core.decision.DecisionResult;
+import rahu.core.decision.TurnProfile;
 import rahu.core.model.ChatMessage;
 import rahu.core.model.GenerationRequest;
 import rahu.core.model.ModelOutcome;
@@ -36,6 +38,10 @@ public final class LiveTurnDriver {
 
     private static final int DEFAULT_CONTEXT_ALLOWANCE = 8192;
     private static final int DEFAULT_MAX_COMPLETION_TOKENS = 2048;
+
+    /** The read-only workspace tools whose relevance the profile decision judges. */
+    private static final List<String> PERMITTED_TOOLS =
+        List.of("workspace.list", "workspace.read", "workspace.search");
 
     private final RahuConfig cfg;
     private final ModelProvider provider;
@@ -118,6 +124,23 @@ public final class LiveTurnDriver {
             String note = shadowDecision(decision, cfg, line);
             if (note != null) {
                 err.println("decision (shadow, " + cfg.decision().model() + "): " + note);
+            }
+
+            // 2b. Batched profile decision (classification + per-tool relevance) in
+            //     ONE askAll dispatch. Advisory only: code owns all control flow.
+            //     It must never block the baseline; any failure degrades closed.
+            TurnProfile profile = null;
+            try {
+                // Context pressure estimation arrives with the compaction track;
+                // until then the honest value is 0.0 (fresh, small history).
+                profile = new ProfileDecider(decision, PERMITTED_TOOLS).decide(line, 0.0);
+            } catch (RuntimeException e) {
+                err.println("profile: unavailable (" + e.getClass().getSimpleName() + ")");
+            }
+            if (profile != null) {
+                err.println("profile: task=" + profile.taskClass().name().toLowerCase(Locale.ROOT)
+                    + " tools=" + String.join(",", profile.relevantTools())
+                    + " degraded=" + profile.degraded());
             }
 
             // 3. Assemble the real prompt and re-check the exact outbound text.

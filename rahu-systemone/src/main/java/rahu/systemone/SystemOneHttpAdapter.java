@@ -12,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Iterator;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.function.Supplier;
@@ -55,7 +56,7 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
     }
 
     @Override
-    public DecisionResult ask(State state, Iterable<Question> questions) {
+    public Map<String, DecisionResult> askAll(State state, List<Question> questions) {
         ObjectNode body = MAPPER.createObjectNode();
         body.put("model", model);
         ObjectNode stateNode = body.putObject("state");
@@ -64,7 +65,7 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
         stateNode.put("contextPressure", state.contextPressure());
         ObjectNode questionsNode = body.putObject("questions");
         for (Question q : questions) {
-            ObjectNode qn = questionsNode.putObject(questionId(q));
+            ObjectNode qn = questionsNode.putObject(DecisionEngine.questionId(q));
             if (q instanceof ChoiceQuestion c) {
                 qn.put("type", "choice");
                 qn.put("instructions", "Choose one permitted option using the supplied criteria.");
@@ -91,8 +92,9 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
             }
             request = builder.build();
         } catch (Exception e) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.UNKNOWN,
-                "invalid decision endpoint");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.UNKNOWN,
+                    "invalid decision endpoint"));
         }
 
         HttpResponse<byte[]> response;
@@ -100,26 +102,44 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
             response = http.send(request, HttpResponse.BodyHandlers.ofByteArray());
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            return new DecisionResult.Failure(DecisionResult.FailureKind.CANCELLED,
-                "decision call interrupted");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.CANCELLED,
+                    "decision call interrupted"));
         } catch (IOException | IllegalArgumentException e) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.TIMEOUT,
-                "decision transport failed");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.TIMEOUT,
+                    "decision transport failed"));
         }
 
         if (response.statusCode() != 200) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                "decision service returned status " + response.statusCode());
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                    "decision service returned status " + response.statusCode()));
         }
         if (response.body().length > MAX_RESPONSE_BYTES) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                "decision response exceeds 1 MiB bound");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                    "decision response exceeds 1 MiB bound"));
         }
 
         return parseAnswers(response.body(), questions);
     }
 
-    private DecisionResult parseAnswers(byte[] payload, Iterable<Question> questions) {
+    /** One typed failure per question, keyed by id (batch order preserved). */
+    private static Map<String, DecisionResult> failuresFor(List<Question> questions,
+        DecisionResult.Failure failure) {
+        Map<String, DecisionResult> results = new LinkedHashMap<>();
+        for (Question q : questions) {
+            results.put(DecisionEngine.questionId(q), failure);
+        }
+        return results;
+    }
+
+    /**
+     * Parses the answers map into one result per question. A question without a
+     * usable answer degrades alone to a typed Failure; its siblings are unaffected.
+     */
+    private Map<String, DecisionResult> parseAnswers(byte[] payload, List<Question> questions) {
         JsonNode root;
         try {
             var parser = MAPPER.getFactory().createParser(payload);
@@ -130,51 +150,54 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
         } catch (IOException e) {
             String msg = e.getMessage() == null ? "" : e.getMessage();
             if (msg.toLowerCase().contains("duplicate")) {
-                return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                    "duplicate JSON key in decision response");
+                return failuresFor(questions,
+                    new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                        "duplicate JSON key in decision response"));
             }
-            return new DecisionResult.Failure(DecisionResult.FailureKind.MALFORMED,
-                "decision response is not valid JSON");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.MALFORMED,
+                    "decision response is not valid JSON"));
         }
 
         if (root.has("truncated") && root.get("truncated").asBoolean(false)) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                "decision input was truncated server-side; rejected under default profile");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                    "decision input was truncated server-side; rejected under default profile"));
         }
 
         JsonNode answers = root.path("answers");
         if (!answers.isObject()) {
-            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                "decision response has no answers map");
+            return failuresFor(questions,
+                new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                    "decision response has no answers map"));
         }
 
+        Map<String, DecisionResult> results = new LinkedHashMap<>();
         for (Question q : questions) {
-            String id = questionId(q);
+            String id = DecisionEngine.questionId(q);
             JsonNode answer = answers.get(id);
             if (answer == null || answer.isNull()) {
-                return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                    "missing answer for question " + id);
+                results.put(id, new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                    "missing answer for question " + id));
+                continue;
             }
             if (q instanceof ChoiceQuestion c) {
-                DecisionResult r = parseChoice(id, answer, c);
-                if (r instanceof DecisionResult.Failure) {
-                    return r;
-                }
-                return r;
+                results.put(id, parseChoice(id, answer, c));
             }
             if (q instanceof NoulQuestion) {
                 JsonNode noul = answer.path("noul");
                 if (!noul.isNumber() || !noul.isDouble() && !noul.isInt()
                     || noul.asDouble() < 0.0 || noul.asDouble() > 1.0) {
-                    return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-                        "noul answer for " + id + " is not a finite probability in [0,1]");
+                    results.put(id, new DecisionResult.Failure(
+                        DecisionResult.FailureKind.PROTOCOL_ERROR,
+                        "noul answer for " + id + " is not a finite probability in [0,1]"));
+                    continue;
                 }
-                return new DecisionResult.ValidNoul(id, noul.asDouble() >= 0.5,
-                    Optional.of(noul.asDouble()));
+                results.put(id, new DecisionResult.ValidNoul(id, noul.asDouble() >= 0.5,
+                    Optional.of(noul.asDouble())));
             }
         }
-        return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
-            "no supported questions in request");
+        return results;
     }
 
     private DecisionResult parseChoice(String id, JsonNode answer, ChoiceQuestion c) {
@@ -222,15 +245,5 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
         }
         return new DecisionResult.ValidChoice(id, chosen, distribution, rawConfidence,
             "concentration");
-    }
-
-    private static String questionId(Question q) {
-        if (q instanceof ChoiceQuestion c) {
-            return c.questionId();
-        }
-        if (q instanceof NoulQuestion n) {
-            return n.questionId();
-        }
-        throw new IllegalArgumentException("unsupported question type: " + q.getClass());
     }
 }
