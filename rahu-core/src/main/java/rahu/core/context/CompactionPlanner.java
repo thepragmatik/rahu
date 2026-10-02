@@ -54,8 +54,9 @@ public final class CompactionPlanner {
     }
 
     /**
-     * Chooses the policy: System One's answer, overridden to CONCISE when the
-     * conservative fit check says the next request cannot fit anyway.
+     * Chooses the policy: System One's answer; a failed or absent answer
+     * defaults to CONCISE (fail closed) and the deterministic fit check can
+     * still override an explicit DEFER when the next request cannot fit.
      */
     public static Plan plan(List<ChatMessage> history, Optional<DecisionResult> decision,
         int contextAllowanceTokens, int maxRecentTurns) {
@@ -67,6 +68,9 @@ public final class CompactionPlanner {
                 case "detailed" -> Policy.DETAILED;
                 default -> Policy.DEFER;
             };
+        } else if (decision.isPresent()) {
+            // Consulted but unreachable: fail closed to the conservative compact.
+            requested = Policy.CONCISE;
         }
 
         int estimated = PromptAssembler.estimateTokens(
