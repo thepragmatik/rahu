@@ -81,6 +81,7 @@ final class LspSession implements AutoCloseable {
     private final Path root;
     private final Map<String, Object> capabilities;
     private int nextId = 1;
+    private boolean closed;
 
     private LspSession(Process process, Path root) {
         this.process = process;
@@ -224,23 +225,46 @@ final class LspSession implements AutoCloseable {
 
     @Override
     public void close() {
-        // shutdown/exit, then kill: a polite request lets jdtls release its index
-        // lock on the workspace, which a SIGKILL would leave behind.
+        if (closed) {
+            return; // idempotent: try-with-resources plus a tool-layer close is normal
+        }
+        closed = true;
+        // Politely ask first, so jdtls releases its index lock on the workspace.
+        // A SIGKILL would leave the lock behind and the next run would fail to
+        // start against the same directory.
         try {
             notify("shutdown", Map.of());
             notify("exit", Map.of());
+            out.flush();
+            // Give it a moment to exit on its own before signalling.
+            process.waitFor(2, TimeUnit.SECONDS);
         } catch (IOException e) {
-            // The server may already be gone; the destroy below is the backstop.
-        }
-        process.destroy();
-        try {
-            if (!process.waitFor(5, TimeUnit.SECONDS)) {
-                process.destroyForcibly();
-                process.waitFor(5, TimeUnit.SECONDS);
-            }
+            // Already gone; the destroy below is the backstop.
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            process.destroyForcibly();
+        }
+        // Destroy only if it is still alive. Nothing is left blocked on the pipe
+        // at this point: every read in this class happens on the caller's thread,
+        // which has returned by the time close() runs.
+        if (process.isAlive()) {
+            process.destroy();
+            try {
+                if (!process.waitFor(5, TimeUnit.SECONDS)) {
+                    process.destroyForcibly();
+                    process.waitFor(5, TimeUnit.SECONDS);
+                }
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                process.destroyForcibly();
+            }
+        }
+        // Closing the stream releases the reader; without this a leaked server can
+        // outlive the JVM on a machine that reaps lazily.
+        try {
+            in.close();
+            out.close();
+        } catch (IOException e) {
+            // Nothing useful to do while tearing down.
         }
     }
 

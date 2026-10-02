@@ -62,16 +62,50 @@ its only declared dependency is `junit-jupiter`. There is no Jackson in core.
 Consequence: the LSP client needs a small local JSON encoder/decoder in
 `rahu-core`. It must not add a JSON dependency, per the module-boundary test.
 
-## Token baseline to beat
+## Measured (2026-10-03)
 
-To be filled in from one week of traces before the integration is judged. Metrics:
+From `LspCostProbeTest` against the pinned snapshot, on this machine:
+
+| metric | value |
+|---|---|
+| capabilities advertised | **26** |
+| cold startup + `initialize` | 980 / 962 / 970 ms |
+| `workspace/symbol` round trip | 535 / 548 / 536 ms |
+| full session incl. close | 2440 / 2418 / 2425 ms |
+
+Three consecutive runs, no leaked processes, tight variance. The client is
+stable; the close cost (~900 ms) is the polite-shutdown wait.
+
+The server really does advertise `renameProvider`, `referencesProvider`,
+`definitionProvider`, `workspaceSymbolProvider`, `codeActionProvider` and an
+`executeCommandProvider` carrying Java commands.
+
+### Cost-effectiveness verdict: NOT YET PROVEN
+
+~1.5 s per session is cheap in wall-clock terms, but that is **not** the
+comparison that matters. The question is whether it beats what the agent already
+does, and the honest answer is that this has not been measured:
+
+- jdtls gives **exact** references, rename and type info. Grep gives approximate
+  refs and costs tokens; the compiler gives exact compiles and costs ~30 s.
+- The saving is only real if the agent currently burns tokens on symbol discovery
+  often enough to matter. **That has not been quantified.**
+
+So the verdict is neither "it works, ship it" nor "it doesn't work". It is
+"the plumbing works, the economics are unmeasured".
+
+**Token baseline still to be collected** (the numbers the decision needs):
 
 1. Mean tool-call tokens for a Java edit in `rahu-core`.
 2. Edit-retry count (a compile cycle that returns an error the agent must fix).
 3. Mean tool-call tokens for a "where is X used" question.
 
-## Measurement gate
+### Leak found and fixed
 
-If a single `find_references` round-trip costs more wall-clock than the token spend
-it saves, jdtls is **not** cost-effective for this workload. Stop, and record that
-negative result here. It is a valid outcome and must not be quietly dropped.
+The first cost probe hung on run 2 with two jdtls processes alive. `close()`
+did not reap the server. A leaked server holds the workspace index lock, so the
+next run cannot start against the same directory — a leak here is not a slow
+down, it is a hard failure on the following run. Fixed: `close()` is now
+idempotent, waits briefly for a clean exit, destroys only if still alive, and
+closes both streams. `closeLeavesNoJdtlsProcessBehind` guards it.
+

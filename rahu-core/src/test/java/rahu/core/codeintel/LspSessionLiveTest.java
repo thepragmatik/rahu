@@ -77,6 +77,39 @@ class LspSessionLiveTest {
     }
 
     @Test
+    void closeLeavesNoJdtlsProcessBehind() throws Exception {
+        // Regression guard: a leaked language server holds the workspace index
+        // lock, so the NEXT run fails to start against the same directory.
+        long before = jdtlsProcessCount();
+        LspSession session = startIfAvailable();
+        assertTrue(jdtlsProcessCount() > before, "the server should be running while the session is open");
+        session.close();
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(15);
+        long after = jdtlsProcessCount();
+        while (after > before && System.nanoTime() < deadline) {
+            Thread.sleep(250);
+            after = jdtlsProcessCount();
+        }
+        assertEquals(before, after,
+                "close() must reap the server; leaked jdtls processes hold the index lock");
+        session.close(); // idempotent
+    }
+
+    /** Counts running jdtls snapshot servers, excluding this process's own shell. */
+    private static long jdtlsProcessCount() {
+        try {
+            Process p = new ProcessBuilder("sh", "-c",
+                    "ps -eo command | grep 'jdtls-snapshot' | grep -v grep | wc -l")
+                    .redirectErrorStream(true).start();
+            String out = new String(p.getInputStream().readAllBytes()).trim();
+            p.waitFor(10, java.util.concurrent.TimeUnit.SECONDS);
+            return out.isEmpty() ? 0 : Long.parseLong(out);
+        } catch (Exception e) {
+            return -1; // cannot measure; do not fail the test on the probe itself
+        }
+    }
+
+    @Test
     void unknownMethodYieldsAnErrorFrameRatherThanAHang() throws Exception {
         try (LspSession session = startIfAvailable()) {
             Map<String, Object> response = session.request("textDocument/definitelyNotAMethod", Map.of());
