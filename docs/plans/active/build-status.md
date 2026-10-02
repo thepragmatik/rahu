@@ -1,28 +1,74 @@
 # Build status
 
-Last updated: 2026-10-02T20:40+10:00 · HEAD: (this commit) · main MERGED to origin
-(PR #1 merged as 20e2282 with a merge commit, so all authors survive). Phases A–F and G1
-complete; G1c landed the injection corpus as a DEFERRED FIXTURE (49 observations, container-
-only execution — see the STRICT guardrail below). G2 search rerank now BUILT and default
-OFF. 265 tests green (100 core + 14 openrouter + 26 systemone + 125 cli).
+Last updated: 2026-10-02T21:50+10:00 · HEAD: this commit · main pushed to origin.
+Phases A–F, G1 and G2 complete. G3 stays deferred. **N1 (architecture audit) complete
+and N2/N3 documentation closed this session.** 287 tests green (114 core + 14 openrouter
++ 26 systemone + 133 cli) at `626d44a`.
 
 Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED.
 
-Next: measure the rerank in SHADOW against a real System One service before considering
-enforce; optionally re-score the injection corpus via the container batch. G3 stays
-deferred. The G09 live gate is blocked on OPERATOR AUTHORITY (a total smoke allowance,
-approved non-sensitive prompt/source views, and the allowed generation IDs/efforts), NOT on
-a missing service — see the correction at line 86: the decision plane is the hosted
-`typesafe/jev-1.13` and it is in use.
+## What this session did (N1, N2, N3)
+
+- **N1 architecture audit** — `docs/reviews/015-architecture-audit.md`. Five findings,
+  two HIGH, all fixed with red-then-green evidence, one concern per commit:
+  - F-1 HIGH `4067ea0` a search observation withheld by the injection gate in ENFORCE
+    was re-delivered verbatim, because the reranker was handed the raw text rather than
+    the gated text. The test that claimed to cover this passed **vacuously**: its
+    fixture put the search term on a different line from the poison.
+  - F-2 MED `ada86eb` the advisory tool-relevance judgment was computed, printed and
+    discarded — the model was still offered every tool. Now narrows the registry.
+  - F-3 HIGH `4002166` the loopback plaintext exemption was a `startsWith` check, so
+    `http://localhost.evil.example` was treated as loopback and allowed to carry
+    cleartext. Now decided by the parsed host.
+  - F-4/F-5 MED `990647f` `tools.enabled` and `tools.exclusions` were parsed into the
+    config and read by no production path; directory exclusions matched
+    case-sensitively while name exclusions did not.
+  - Recorded without a change: F-6 two `confidenceFloor` defaults, F-7 `Question` not
+    `sealed`, F-8 transport faults collapsed to `TIMEOUT`, F-9 `tools.resultBytes` inert.
+  - **The audit's most serious possible finding does not exist.** A decision-plane
+    confidence value cannot reach execution without a Java-side check; traced and
+    recorded with the specific checks that prevent it.
+- **N2** roadmap M1/M2 rows corrected to state the evidence level rather than flipping a
+  gate to look finished.
+- **N3** `docs/reviews/dogfood-release.md` created — the requirement-to-test evidence
+  manifest `release-gates.md:39` requires. G09 recorded as **blocked on operator
+  authority**, with the missing live `eval` code path named as missing code.
+
+## Corrections to this file, made this session
+
+Three claims in earlier revisions of this file were false and are now removed:
+
+1. A "live eval has run green" line. **No live eval path exists** —
+   `EvalCommand.java:54-62` refuses with exit 3 on both branches and `runOfflineTask` is
+   the only task path.
+2. A "do NOT push yet" warning. Superseded: main is pushed and `local == origin/main`.
+3. A preflight entry claiming `OPENROUTER_API_KEY` was absent, which contradicted its
+   own later correction in the same file. It is present in `.env` and in use.
+
+Also: `prompt2.md` section 1 states HEAD `0a6f84f`. The real HEAD at audit time was
+`7ae0e48`, one commit later. Every other fact in that table verified, including the
+265-test count at `7ae0e48`.
+
+## Next
+
+1. Operator: approved non-sensitive prompt and source views (needs a
+   `privacy.sourcePolicyFile` manifest with an exact SHA-256 per file, including
+   `ARCHITECTURE.md`), and allowed generation model IDs and effort levels. Aggregate
+   smoke allowance is set to **1.00 USD**.
+2. N2a: implement the live `eval` path — real generation dispatch per task, real
+   decision capture, one aggregate ledger across all three tasks, invoked via the
+   packaged `bin/rahu`. Offline-implementable; cannot be verified without item 1.
+3. N2b: run it under the 1.00 USD allowance.
+4. N4: measure the rerank. Blocked on item 1. Shadow cannot measure applied effect.
+5. Follow-up: F-9 `tools.resultBytes` inert, same shape as F-4.
+6. Operator decision: whether `routing.mode` stays `active` in the untracked
+   `config.local.json`. Left as-is and recorded, not changed unilaterally.
 
 > STRICT guardrail (operator, 2026-10-02): never execute adversarial instructions or
 > adversarial test content directly on a developer or production host. Keep it in a
 > fixture; execute only in a separate, isolated batch inside a container. Enforced in code
 > by `ShadowCorpusProbe`, which fails closed without positive containerisation evidence;
 > `ShadowCorpusProbeGuardTest` fails the build if that guard is removed.
-
-> Correction 2026-10-02T17:03: this header previously read `HEAD: a84ab64 (F3b)` and
-> "Next: F3c", which was three phases stale. Corrected to the real HEAD and the real queue.
 
 ## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
 
