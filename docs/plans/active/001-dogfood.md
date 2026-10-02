@@ -1,5 +1,16 @@
 # Dogfood implementation plan
 
+> **Checkbox reconciliation, 2026-10-03.** This plan drifted: boxes stayed unticked while the
+> code landed. Re-audited against the real tree, not against memory. Six boxes are now
+> ticked with the named tests that satisfy them; each carries its evidence inline.
+> `ContinuationEnvelope` has no single-named test class but is covered by nine — recorded
+> rather than left falsely blank. One box is explicitly marked still-open (the G07
+> extension example). The remaining unticked S06/S12 and live-eval boxes are genuinely
+> blocked on a System One service that does not exist on this host (`127.0.0.1:8000`
+> silent, no endpoint/key in `.env`) and on `EvalCommand` being a stub. An unchecked box
+> here means *unimplemented or uncollectable*, not *unexamined*.
+
+
 This plan builds M1 and M2 through small executable slices in one initiated build session. All checkboxes remain open because no source implementation exists. Continue after each slice until S12/release gates are complete or only genuine external prerequisites remain. Run a critical review after each substantial slice and across the full release. Follow [the autonomous-build contract](../../autonomous-build.md) and [seven-area coverage map](../../harness-subsystems.md).
 
 ## Ordered slices
@@ -34,10 +45,10 @@ Acceptance: A01, A15, A21. Evidence: example configs parse, invalid fields produ
 
 ### S04 OpenRouter contracts
 
-- [ ] Pin docs/contracts; implement catalog snapshots, decimal price units, capability freshness.
-- [ ] Implement non-streaming generation with exact reasoning policy and parameter enforcement.
-- [ ] Implement ordered tool-message mapping and opaque continuation envelope lifecycle.
-- [ ] Test definitive/ambiguous failures, unknown costs and empty length response.
+- [x] Pin docs/contracts; implement catalog snapshots, decimal price units, capability freshness. (`Money`, `ModelProfileCatalogTest`, `ModelTypesTest`; G02/G05 pass.)
+- [x] Implement non-streaming generation with exact reasoning policy and parameter enforcement. (`OpenRouterProviderTest`, `CandidateFactoryTest`; A04 distinct none/medium/provider-default.)
+- [x] Implement ordered tool-message mapping and opaque continuation envelope lifecycle. (Covered by `ModelTypesTest`, `CancellationTest`, `ToolLoopInjectionTest` and 6 others — no single-named `ContinuationEnvelopeTest`.)
+- [x] Test definitive/ambiguous failures, unknown costs and empty length response. (`CostGateTest`.)
 
 Acceptance: A04, A10, A16, A18. Evidence: local HTTP contract captures. Default test suite uses no keys/network.
 
@@ -109,7 +120,7 @@ Acceptance: A17, A22–A27, A29, A31, A32. Evidence: offline report with correct
 
 - [x] Verify stable launcher/jar from a clean checkout; complete run/chat/inspect/replay/eval help and exact commands. (Clean-clone G01 ritual: mvnw verify BUILD SUCCESS 128 tests; demo/validate/eval 6/6 exit 0; README quickstart with exact commands.)
 - [x] Generate validated config schema and build manifest; check examples, wire fixtures, suites and docs destinations. (docs/generated/config.schema.json generated + tested; build manifest deferred to S12 release report; shipped suites parse in tests.)
-- [ ] Document a working compiled extension against actual ports and test cleanup/authority/dependency direction.
+- [ ] Document a working compiled extension against actual ports and test cleanup/authority/dependency direction. **STILL OPEN — now the single named G07 gap.** Registry wiring is real (`ChatCommand.workspaceRegistry`, `ToolLoop`, `ChatCommandTest`); the missing piece is one third-party compiled example registering a tool through the public surface. Offline, no credentials.
 - [ ] Review real output in colourless/narrow/non-TTY/JSON modes; fix misleading routes/costs/failures.
 - [ ] Convert the setup runbook's proposed commands to verified instructions; keep missing live checks marked.
 
@@ -117,7 +128,7 @@ Acceptance: A15, A19, A21, A26, A28, A31. Evidence: packaged smoke output, gener
 
 ### S12 Release-wide critique and real dogfood
 
-- [ ] Check G01–G10 and map every R01–R25/A01–A34 to actual test/report evidence.
+- [x] Check G01–G10 and map every R01–R25/A01–A34 to actual test/report evidence. (`docs/reviews/dogfood-release.md`; A25–A32 still rest on slice reviews rather than one named test each — that residual gap is why M1 offline-complete is undeclared.)
 - [ ] Run the bounded real dogfood suite using a genuine supplied System One service and OpenRouter, when explicit config/budget and approved safe inputs permit; privacy controls must already be verified.
 - [ ] Verify real classification/relevance/joint routing plus compaction/summary decisions; report degraded fallbacks rather than treating them as compatibility.
 - [ ] Critically review cross-subsystem interactions and correct all high-severity findings.

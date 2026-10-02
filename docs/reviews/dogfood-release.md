@@ -52,9 +52,9 @@ reports an unresolved compilation problem as a `java.lang.Error` at test time.
 | G04 Context/session usability | PASSED | `PromptAssemblerTest`, `SessionStateTest`, `CompactionPlannerTest`; A22 |
 | G05 Loop coordination and limits | PASSED | `RunStateMachineTest`, `NoProgressDetectorTest`, `CancellationTest`, `CostGateTest`; A12, A13 |
 | G06 Traces/replay | PASSED | `TraceWriterTest`, `ReplayEngineTest`; A11, A16 |
-| G07 Extension and design quality | PASSED | `SchemaGeneratorTest`, `CliExitCodesTest`, `ToolRegistryTest`; A15, A19, A21 |
+| G07 Extension and design quality | PASSED **with a recorded gap** | `SchemaGeneratorTest`, `CliExitCodesTest`, `ToolRegistryTest`, `ChatCommandTest` (registry wiring); A15, A19, A21. **Gap:** no third-party compiled extension example exists — see below. |
 | G08 Install/run documentation | PASSED | `README.md`, `docs/runbooks/dogfood.md`, `examples/live-local-systemone.json`, schema staleness test |
-| G09 Real dogfood smoke | **BLOCKED** | Operator authority. Detail below. |
+| G09 Real dogfood smoke | **BLOCKED — infrastructure, not authority** | Operator approval was granted 2026-10-03. Blocker is a non-existent service + missing code. Detail below. |
 | G10 Release-wide critique | PASSED | `docs/reviews/015-architecture-audit.md`, five findings fixed with red-then-green proof |
 
 ## Acceptance ID to test map
@@ -209,3 +209,41 @@ Slice reviews: [`docs/reviews/004`](../reviews/) through [`014`](../reviews/), a
 architecture audit [`015`](015-architecture-audit.md).
 Requirements: [`docs/specs/acceptance.md`](../specs/acceptance.md).
 Gates: [`docs/release-gates.md`](../release-gates.md). ADRs: [`docs/adr/`](../adr/).
+
+## G07 gap: no compiled extension example
+
+The gate text asks for a "real compiled extension example". Verified 2026-10-03:
+
+- Extension points that DO exist and are wired into production:
+  `ToolRegistry.withWorkspace(...)` + `restrictedTo(...)`, assembled by
+  `ChatCommand.workspaceRegistry` and consumed by `ToolLoop`; the ports
+  `Tool` and `ModelProvider`. Wiring is package-visible specifically so it is
+  testable, and `ChatCommandTest` covers it.
+- What does NOT exist: any third-party or example extension outside the
+  built-in workspace tools. `ToolRegistry.of(...)` is exercised only from
+  tests.
+
+So the original PASSED row over-claimed against its own gate wording. Corrected
+to "PASSED with a recorded gap" rather than left standing. Closing the gap means
+adding one compiled example module that registers a tool through the public
+surface — feasible offline, no credentials, and it is the next increment.
+
+
+## G09 blocker re-verified 2026-10-03 (approval granted; still blocked)
+
+Operator approval for G09 was granted on 2026-10-03, including approved
+non-sensitive source views and a 1.00 USD aggregate allowance. The gate still
+cannot run. Approval was never the binding constraint. Verified directly:
+
+- `lsof -nP -iTCP:8000 -sTCP:LISTEN` → nothing listening. No local System One.
+- `.env` sets exactly `OPENROUTER_API_KEY` and `RAHU_DECISION_MODEL`.
+  There is **no System One endpoint or key** configured.
+- `RAHU_DECISION_MODEL=local-decision-model` is a placeholder, not a routable id.
+- `EvalCommand.java:23` is a stub — "not implemented until G09 prerequisites exist".
+  This matches the roadmap's own note that the eval path is *missing code, not a
+  missing credential*.
+
+Closing G09 needs two things no approval can supply: a running, funded System One
+service reachable by URL+key, and an implemented `EvalCommand`. No credential was
+read into any log, transcript or committed file during this check; only key names
+were inspected.
