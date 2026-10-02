@@ -26,7 +26,7 @@ public final class ConfigLoader {
     private static final Set<String> TOP_KEYS = Set.of(
         "schemaVersion", "mode", "decision", "generation", "routing", "pools",
         "summarisation", "agent", "catalog", "tools", "trace", "context",
-        "session", "orchestration", "privacy", "injection");
+        "session", "orchestration", "privacy", "injection", "search");
     private static final Set<String> ENV_FIELDS = Set.of(
         "decision.model", "generation.apiKeyEnv", "decision.apiKeyEnv");
     private static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{([A-Z_][A-Z0-9_]*)}");
@@ -105,6 +105,7 @@ public final class ConfigLoader {
         var generation = bindGeneration(root.get("generation"));
         var routing = bindRouting(root.get("routing"));
         var injection = bindInjection(root.get("injection"));
+        var search = bindSearch(root.get("search"));
         Map<String, List<RahuConfig.PoolEntry>> pools = bindPools(root.get("pools"));
         var summarisation = bindSummarisation(root.get("summarisation"), routing);
         var agent = bindAgent(root.get("agent"));
@@ -137,7 +138,7 @@ public final class ConfigLoader {
 
         return new RahuConfig(schemaVersion, mode, decision, generation, routing, pools,
             summarisation, agent, catalog, tools, trace, context, session,
-            new RahuConfig.OrchestrationConfig(orchestration), privacy, injection);
+            new RahuConfig.OrchestrationConfig(orchestration), privacy, injection, search);
     }
 
     private RahuConfig.DecisionConfig bindDecision(JsonNode n) {
@@ -184,6 +185,26 @@ public final class ConfigLoader {
             throw new ConfigError("injection.threshold must be in [0,1]");
         }
         return new RahuConfig.InjectionConfig(m, threshold);
+    }
+
+    /**
+     * Search rerank config. The block is optional: an absent block is the documented
+     * off default, so a config written before this feature still loads unchanged.
+     */
+    private RahuConfig.SearchConfig bindSearch(JsonNode n) {
+        if (n == null) {
+            return RahuConfig.SearchConfig.defaults();
+        }
+        String m = n.path("mode").asText("off");
+        if (!m.equals("off") && !m.equals("shadow") && !m.equals("enforce")) {
+            throw new ConfigError(
+                "search.mode must be off|shadow|enforce, got \"" + m + "\"");
+        }
+        Integer max = n.has("maxCandidates") ? n.get("maxCandidates").asInt() : 20;
+        if (max < 1 || max > 1000) {
+            throw new ConfigError("search.maxCandidates must be within 1-1000");
+        }
+        return new RahuConfig.SearchConfig(m, max);
     }
 
     private RahuConfig.RoutingConfig bindRouting(JsonNode n) {

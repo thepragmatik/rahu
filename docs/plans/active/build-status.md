@@ -1,11 +1,22 @@
 # Build status
 
-Last updated: 2026-10-02T17:42+10:00 · HEAD: 31c7b2d · Track T + Track D merged, Phases A–F
-complete, Phase G1 built and SHADOW-ONLY (do not enforce — see G1c). 215 tests green.
-Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED. 68 revisions are on
-origin/feat/m2-decision-plane-and-tools with PR #1 open; main itself is still unpushed.
-Next: G1 follow-ups (batched injection questions per turn; 50-observation corpus), then G2
-(search rerank). G3 stays deferred. Live gate BLOCKED on a supplied System One service.
+Last updated: 2026-10-02T20:40+10:00 · HEAD: (this commit) · main MERGED to origin
+(PR #1 merged as 20e2282 with a merge commit, so all authors survive). Phases A–F and G1
+complete; G1c landed the injection corpus as a DEFERRED FIXTURE (49 observations, container-
+only execution — see the STRICT guardrail below). G2 search rerank now BUILT and default
+OFF. 265 tests green (100 core + 14 openrouter + 26 systemone + 125 cli).
+
+Cost gate FIXED (pre-dispatch reservation). Config schema defects FIXED.
+
+Next: measure the rerank in SHADOW against a real System One service before considering
+enforce; optionally re-score the injection corpus via the container batch. G3 stays
+deferred. Live gate BLOCKED on a supplied System One service.
+
+> STRICT guardrail (operator, 2026-10-02): never execute adversarial instructions or
+> adversarial test content directly on a developer or production host. Keep it in a
+> fixture; execute only in a separate, isolated batch inside a container. Enforced in code
+> by `ShadowCorpusProbe`, which fails closed without positive containerisation evidence;
+> `ShadowCorpusProbeGuardTest` fails the build if that guard is removed.
 
 > Correction 2026-10-02T17:03: this header previously read `HEAD: a84ab64 (F3b)` and
 > "Next: F3c", which was three phases stale. Corrected to the real HEAD and the real queue.

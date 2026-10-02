@@ -25,7 +25,8 @@ public record RahuConfig(
     SessionConfig session,
     OrchestrationConfig orchestration,
     PrivacyConfig privacy,
-    InjectionConfig injection) {
+    InjectionConfig injection,
+    SearchConfig search) {
 
     public record OrchestrationConfig(String mode) {
     }
@@ -47,6 +48,26 @@ public record RahuConfig(
      * shadow records what would have been withheld without withholding it, which is
      * the only mode allowed before the guardrail's observation count is met.
      */
+    /**
+     * Optional relevance rerank for search observations. {@code mode} is
+     * off|shadow|enforce; absent means off. Shadow scores and reports the order it would
+     * have applied without applying it.
+     */
+    public record SearchConfig(String mode, Integer maxCandidates) {
+
+        public static SearchConfig defaults() {
+            return new SearchConfig("off", 20);
+        }
+
+        public String modeOrDefault() {
+            return mode == null || mode.isBlank() ? "off" : mode;
+        }
+
+        public int maxCandidatesOrDefault() {
+            return maxCandidates == null ? 20 : maxCandidates;
+        }
+    }
+
     public record InjectionConfig(String mode, Double threshold) {
 
         public static InjectionConfig defaults() {

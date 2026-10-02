@@ -3,6 +3,7 @@ package rahu.cli.live;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import rahu.core.ModelRef;
 import rahu.core.ReasoningPolicy;
@@ -21,6 +22,8 @@ import rahu.core.tools.ToolCallLog;
 import rahu.core.tools.ToolRegistry;
 import rahu.core.tools.ToolResult;
 import rahu.core.tools.WorkspaceTools;
+import rahu.core.decision.DecisionResult;
+import rahu.systemone.DecisionEngine;
 
 /**
  * Bounded read-only tool loop: generate, execute any proposed calls, feed the
@@ -43,13 +46,25 @@ public final class ToolLoop {
     private final WorkspaceTools workspace;
     private final Provenance provenance;
     private final InjectionGate injection;
+    private final SearchReranker reranker;
     private final int maxCallsPerStep;
     private final List<String> executedCalls = new ArrayList<>();
     private final List<InjectionJudgment> injectionJudgments = new ArrayList<>();
+    private SearchReranker.Result lastRerank;
+    /** The user's request for this turn; relevance is judged against it. */
+    private String queryText = "";
 
     public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
         ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
         InjectionGate injection) {
+        this(registry, boundary, provider, callLog, gate, provenance, maxCallsPerStep,
+            injection, new SearchReranker(UNREACHABLE_DECISION, SearchReranker.Mode.OFF,
+                DEFAULT_RERANK_CANDIDATES));
+    }
+
+    public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
+        ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
+        InjectionGate injection, SearchReranker reranker) {
         this.registry = registry;
         this.boundary = boundary;
         this.provider = provider;
@@ -58,7 +73,36 @@ public final class ToolLoop {
         this.workspace = new WorkspaceTools(boundary);
         this.provenance = provenance;
         this.injection = injection;
+        this.reranker = reranker == null
+            ? new SearchReranker(UNREACHABLE_DECISION, SearchReranker.Mode.OFF,
+                DEFAULT_RERANK_CANDIDATES)
+            : reranker;
         this.maxCallsPerStep = maxCallsPerStep;
+    }
+
+    /**
+     * Candidates scored per search when no explicit cap is configured. The cap keeps the
+     * batch inside the 16 KiB state bound; it limits how much is SCORED, never how much
+     * is returned.
+     */
+    public static final int DEFAULT_RERANK_CANDIDATES = 20;
+
+    /**
+     * A decision engine that refuses every question, for the wiring that does not
+     * rerank. Rerank in OFF never asks, so this is unreachable in practice — it exists
+     * so a caller that does not want a decision engine still gets a well-formed loop
+     * rather than a null field, and so nothing can silently reach a default engine.
+     */
+    private static final DecisionEngine UNREACHABLE_DECISION = new DecisionEngine() {
+        @Override
+        public Map<String, DecisionResult> askAll(State state, List<Question> questions) {
+            throw new IllegalStateException("no decision engine wired for rerank");
+        }
+    };
+
+    /** The rerank applied to the current turn's last search, for the observability trail. */
+    public SearchReranker.Result lastRerank() {
+        return lastRerank;
     }
 
     /**
@@ -95,6 +139,8 @@ public final class ToolLoop {
 
         executedCalls.clear();
         injectionJudgments.clear();
+        lastRerank = null;
+        queryText = lastUserText(messages);
         List<ChatMessage> conversation = new ArrayList<>(messages);
         for (int round = 0; round <= maxCallsPerStep; round++) {
             var request = new GenerationRequest(model, policy, conversation,
@@ -192,11 +238,58 @@ public final class ToolLoop {
             String observationId = "tool-obs-" + calls.get(i).id();
             var disposition = byId.get(observationId);
             injectionJudgments.add(new InjectionJudgment(observationId, disposition));
-            out.add(new Observation(disposition.withholds()
+            String text = disposition.withholds()
                 ? "denied: observation withheld (injection risk)"
-                : texts.get(i)));
+                : texts.get(i);
+            // Rerank runs LAST, on text that already passed both gates, and only
+            // reorders it. Withheld or denied text is never reordered, so the overlay
+            // cannot resurface anything a gate removed.
+            out.add(new Observation(
+                "workspace.search".equals(calls.get(i).name())
+                    ? rerank(texts.get(i))
+                    : text));
         }
         return List.copyOf(out);
+    }
+
+    /**
+     * Reorders a search observation's hit lines by relevance, leaving the trailing
+     * truncation notice last and any non-hit line (a denial, an error) untouched. The
+     * rendered body mixes hit lines with a possible "[truncated: ...]" marker, so only
+     * the hit prefix is ranked.
+     */
+    private String rerank(String observation) {
+        var lines = new ArrayList<>(List.of(observation.split("\n", -1)));
+        int hitCount = lines.size();
+        while (hitCount > 0 && lines.get(hitCount - 1).startsWith("[truncated:")) {
+            hitCount--;
+        }
+        if (hitCount < 2) {
+            lastRerank = null;
+            return observation;
+        }
+        var hits = List.copyOf(lines.subList(0, hitCount));
+        var tail = List.copyOf(lines.subList(hitCount, lines.size()));
+        SearchReranker.Result result = reranker.rerank(queryText, hits);
+        lastRerank = result;
+        var out = new ArrayList<String>(result.ordered());
+        out.addAll(tail);
+        return String.join("\n", out);
+    }
+
+    /**
+     * The most recent user message, which is what relevance is judged against: a hit is
+     * relevant to what was ASKED, not to the tool call's arguments. Falls back to empty
+     * rather than guessing from another role.
+     */
+    private static String lastUserText(List<ChatMessage> messages) {
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            ChatMessage m = messages.get(i);
+            if (m.role() == ChatMessage.Role.USER) {
+                return m.content() == null ? "" : m.content();
+            }
+        }
+        return "";
     }
 
     /** One call's model-visible observation text. */

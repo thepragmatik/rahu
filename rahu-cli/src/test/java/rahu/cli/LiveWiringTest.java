@@ -48,7 +48,8 @@ class LiveWiringTest {
             new RahuConfig.SessionConfig("in-process", 20, new BigDecimal("0.50")),
             new RahuConfig.OrchestrationConfig("single"),
             new RahuConfig.PrivacyConfig("strict", "block", "unknown", null),
-            RahuConfig.InjectionConfig.defaults());
+            RahuConfig.InjectionConfig.defaults(),
+            RahuConfig.SearchConfig.defaults());
     }
 
     @Test

@@ -120,6 +120,43 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("An absent search block loads as the documented off default")
+    void searchDefaultsWhenAbsent() throws Exception {
+        var cfg = new ConfigLoader().load(write(VALID_CONFIG));
+        assertEquals("off", cfg.search().modeOrDefault());
+        assertEquals(20, cfg.search().maxCandidatesOrDefault());
+    }
+
+    @Test
+    @DisplayName("A search block binds mode and candidate cap")
+    void searchBindsExplicitValues() throws Exception {
+        var cfg = new ConfigLoader().load(write(VALID_CONFIG.replace(
+            "\"privacy\"",
+            "\"search\": {\"mode\": \"shadow\", \"maxCandidates\": 8},\n          \"privacy\"")));
+        assertEquals("shadow", cfg.search().modeOrDefault());
+        assertEquals(8, cfg.search().maxCandidatesOrDefault());
+    }
+
+    @Test
+    @DisplayName("An unusable search mode or cap is refused at load, not silently defaulted")
+    void searchRefusesBadValues() throws Exception {
+        assertThrows(ConfigError.class, () -> new ConfigLoader().load(
+            write(withSearch("{\"mode\": \"on\"}"))),
+            "a typo'd mode must fail loudly rather than quietly disabling the feature");
+        assertThrows(ConfigError.class, () -> new ConfigLoader().load(
+            write(withSearch("{\"maxCandidates\": 0}"))));
+        assertThrows(ConfigError.class, () -> new ConfigLoader().load(
+            write(withSearch("{\"maxCandidates\": 100000}"))),
+            "an unbounded cap could overflow the 16 KiB state bound");
+    }
+
+    /** VALID_CONFIG with a search block inserted; anchored on a key it always has. */
+    private static String withSearch(String searchBlock) {
+        return VALID_CONFIG.replace("\"privacy\"",
+            "\"search\": " + searchBlock + ",\n          \"privacy\"");
+    }
+
+    @Test
     @DisplayName("An absent injection block loads as the documented off default")
     void injectionDefaultsWhenAbsent() throws Exception {
         var cfg = new ConfigLoader().load(write(VALID_CONFIG));

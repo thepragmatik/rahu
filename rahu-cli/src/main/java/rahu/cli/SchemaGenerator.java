@@ -151,6 +151,14 @@ public final class SchemaGenerator {
                     "fallback": {"type": "string"}
                   }
                 },
+                "search": {
+                  "type": "object",
+                  "description": "Relevance rerank for search observations. Absent means off. Shadow scores and reports the proposed order without applying it; enforce reorders. Each search costs one decision call once enabled.",
+                  "properties": {
+                    "mode": {"type": "string", "enum": ["off", "shadow", "enforce"]},
+                    "maxCandidates": {"type": "integer", "minimum": 1, "maximum": 1000}
+                  }
+                },
                 "injection": {
                   "type": "object",
                   "description": "Injection-risk overlay on tool observations. Absent means off. Do not set enforce until the shadow threshold is calibrated: the InjecAgent 0.10 does not transfer to real observations.",

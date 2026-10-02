@@ -148,9 +148,12 @@ public final class ChatCommand implements Callable<Integer> {
             provenance(cfg),
             cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep(),
             new rahu.cli.live.InjectionGate(decision, injectionMode(cfg.injection()),
-                cfg.injection().thresholdOrDefault()));
+                cfg.injection().thresholdOrDefault()),
+            new rahu.cli.live.SearchReranker(decision, rerankMode(cfg.search()),
+                cfg.search().maxCandidatesOrDefault()));
 
-        err.println("rahu chat (live) — injection " + injectionMode(cfg.injection())
+        err.println("rahu chat (live) — rerank " + rerankMode(cfg.search())
+            + " — injection " + injectionMode(cfg.injection())
             + " — routing " + router.mode()
             + ", pool " + cfg.routing().pool() + ", candidates "
             + router.candidates().candidates().size() + ", decision "
@@ -169,6 +172,15 @@ public final class ChatCommand implements Callable<Integer> {
             case "shadow" -> rahu.cli.live.InjectionGate.Mode.SHADOW;
             case "enforce" -> rahu.cli.live.InjectionGate.Mode.ENFORCE;
             default -> rahu.cli.live.InjectionGate.Mode.OFF;
+        };
+    }
+
+    /** Config mode to rerank mode; ConfigLoader has already refused anything else. */
+    private static rahu.cli.live.SearchReranker.Mode rerankMode(RahuConfig.SearchConfig cfg) {
+        return switch (cfg.modeOrDefault()) {
+            case "shadow" -> rahu.cli.live.SearchReranker.Mode.SHADOW;
+            case "enforce" -> rahu.cli.live.SearchReranker.Mode.ENFORCE;
+            default -> rahu.cli.live.SearchReranker.Mode.OFF;
         };
     }
 
