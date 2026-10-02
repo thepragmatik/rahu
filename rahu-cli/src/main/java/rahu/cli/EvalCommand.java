@@ -51,6 +51,12 @@ public final class EvalCommand implements Callable<Integer> {
             SuiteV1 suiteV1 = SuiteV1.load(suite);
             var err = spec.commandLine().getErr();
 
+            if ("live".equals(cfg.mode())) {
+                err.println("eval: this config is live, but live execution requires an explicit "
+                    + "budget. Re-run with --live --max-cost-usd <amount> once G09 prerequisites "
+                    + "exist, or point --config at an offline config (examples/offline.json)");
+                return 3;
+            }
             if (live || maxCostUsd != null) {
                 err.println("eval --live: live execution needs a verified System One service, "
                     + "an OpenRouter key and G09 prerequisites; not available in this build");
@@ -64,7 +70,7 @@ public final class EvalCommand implements Callable<Integer> {
             }
             warnings.add("offline smoke: proves plumbing, not routing quality or savings");
 
-            String json = ReportV1.render(suiteV1.id(), cfg.mode(),
+            String json = ReportV1.render(suiteV1.id(), "offline",
                 suiteV1.tasks().size(), results, warnings);
             if (report != null) {
                 java.nio.file.Files.writeString(report, json);

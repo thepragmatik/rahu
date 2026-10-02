@@ -43,6 +43,7 @@ OpenRouter credential, with no local decision service, and account for the cost 
 | Low | Live turns write no trace file; replay covers offline runs only | Wire TraceWriter into the live loop for G09 replay evidence | Owner: S12b |
 | Low | Live chat does not yet run compaction (history is small in these turns) | Reuse the S09 planner in the live loop before long sessions | Owner: S12b |
 | Low | Decision cost (~$0.00002/call) is not metered into the session ledger; only generation cost is | Fold decision usage into the ledger when the adapter surfaces it | Owner: S12b |
+| Medium | `eval` with a live-mode config silently ran the offline fake path while the report said `mode:"live"` — a report claiming execution that never happened (found while writing operator instructions) | Fixed in this slice: a live config without `--live --max-cost-usd` refuses with exit 3, and the report always names the mode that actually executed; regression test EvalLiveConfigGuardTest (2) | Closed |
 
 ## Decision
 
