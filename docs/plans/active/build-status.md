@@ -1,12 +1,21 @@
 # Build status
 
-Last updated: 2026-10-02T14:55+10:00 · HEAD: 2dc6fb1 (Part 0 refactor) · Next: Track T (tool unlock) in worktree `../rahu-wt-tools`, per .hermes/plans/2026-10-02_114504 (which supersedes S12b-first ordering)
+Last updated: 2026-10-02T16:10+10:00 · HEAD: dc274cd (Track T merged) · Next: Track D (decision ops) in worktree `../rahu-wt-decisions`, per .hermes/plans/2026-10-02_114504 (Part 2, phases B→C→E)
 
 ## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
 
 - [x] Task 0.1 baseline: `./mvnw verify` BUILD SUCCESS, 136 tests (85 core + 9 openrouter + 7 systemone + 35 cli), clean tree @ 3252e17.
 - [x] Task 0.2 refactor: `LiveTurnDriver` extracted to `rahu-cli/src/main/java/rahu/cli/live/`; `ChatCommand.runLive` is now adapter wiring + delegation; still 136 tests; live probe `REFACTOR_OK` byte-identical footer, exit 0. Commit 2dc6fb1.
 - [x] Task 0.3 worktrees: `../rahu-wt-tools` (feat/tools-unlock), `../rahu-wt-decisions` (feat/decision-ops), both @ 2dc6fb1; `dependency:go-offline` primed first (rc=0).
+
+## Track T — tools unlock (2026-10-02, plan 2026-10-02_114504 Part 1)
+
+- [x] T1 red: `ToolLoopTest` fails with `cannot find symbol: variable ToolLoop` exactly as planned.
+- [x] T2: `rahu-cli/.../live/ToolLoop.java` — bounded loop over the three read-only workspace tools, with two spec-mandated additions beyond the plan sketch: A09 call-ID dedup via `WorkspaceTools.executeToolCall` + `ToolCallLog` (protocol violations become typed failed observations), and `PrivacyGate.admitForDecision` scans on tool arguments AND observations before they re-enter model context (session provenance threaded from `ChatCommand`; unknown fails closed). Loop advertises `rahu.core.model.ToolDescriptor`s and returns `INVALID_REQUEST` on step-cap exhaustion. Tests 2/2. Commit 9ee3a1e.
+- [x] T3: `ChatCommand` builds `PathBoundary` from `tools.root` + `ToolRegistry.withWorkspace` + `ToolLoop` (with session provenance and `maxCallsPerStep`, default 8); `LiveTurnDriver` routes generation through `ToolLoop.generate` and prints a `tool:` stderr line per executed call. LIVE proof on worktree: `tool: workspace.read {"path":"pom.xml"}` → answer `rahu-parent`, exit 0, $0.000027. Commit 392d17a.
+- [x] Merge per §4.5: rebase main → verify 138/138 → `git merge --no-ff` → diff-stat clean. Merge commit 1ab8b09; post-merge live probe on `main` reproduced `tool: workspace.read` → `rahu-parent`, exit 0.
+- [x] Follow-up fix from the merge rule: T2's `git add -A` had swept the machine-local `rahu-cli/.classpath` JDK-container line into VCS (tracked-but-ignored IDE metadata). Fixed the class: untracked all 21 IDE metadata files (.classpath/.project/.settings across modules); commit dc274cd. Final `./mvnw verify` on main: 85+9+7+37 = 138 tests, BUILD SUCCESS.
+- Note: worktree copies of gitignored `config.local.json`/`.env` were made from the main checkout (verified config holds key NAMES, not values). Live probes load `.env` only for the process (`set -a` + subshell-scoped unset after), after a first run polluted the persistent shell env and tripped two credential-fixture tests — root cause was the shell, not the code; re-verified green with the env scrubbed.
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
