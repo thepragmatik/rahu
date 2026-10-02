@@ -241,12 +241,14 @@ public final class ToolLoop {
             String text = disposition.withholds()
                 ? "denied: observation withheld (injection risk)"
                 : texts.get(i);
-            // Rerank runs LAST, on text that already passed both gates, and only
-            // reorders it. Withheld or denied text is never reordered, so the overlay
-            // cannot resurface anything a gate removed.
+            // Rerank runs LAST, on the text the gates already decided, and only
+            // reorders it. It is handed `text`, never `texts.get(i)`: in ENFORCE the two
+            // differ, and reranking the raw observation would re-deliver exactly the
+            // content the injection gate withheld. Withheld text is a single denial
+            // line, which has no hits to rank, so rerank leaves it untouched.
             out.add(new Observation(
                 "workspace.search".equals(calls.get(i).name())
-                    ? rerank(texts.get(i))
+                    ? rerank(text)
                     : text));
         }
         return List.copyOf(out);
