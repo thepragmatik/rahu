@@ -2,6 +2,7 @@ package rahu.core.tools;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.List;
@@ -89,7 +90,16 @@ public final class PathBoundary {
         if (request == null || request.isBlank()) {
             throw new BoundaryViolation("empty path request");
         }
-        Path candidate = Path.of(request);
+        Path candidate;
+        try {
+            candidate = Path.of(request);
+        } catch (InvalidPathException e) {
+            // A NUL byte or lone surrogate reaches here from a single model-authored
+            // argument. InvalidPathException is neither a BoundaryViolation nor an
+            // IOException, so it would otherwise escape every catch block in the tool
+            // layer. The reason never echoes the offending value.
+            throw new BoundaryViolation("path contains an illegal character");
+        }
         if (candidate.isAbsolute()) {
             throw new BoundaryViolation("absolute paths are not permitted");
         }

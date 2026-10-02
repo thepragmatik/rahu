@@ -1,6 +1,7 @@
 package rahu.core.tools;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,6 +81,11 @@ public final class WorkspaceTools {
             return ToolResult.success(body, truncated);
         } catch (PathBoundary.BoundaryViolation e) {
             return ToolResult.invalid(e.reason());
+                } catch (UncheckedIOException e) {
+            // Files.walk wraps a directory-read failure in UncheckedIOException, a
+            // RuntimeException that catch (IOException) cannot see. Any
+            // permission-restricted directory in a workspace used to abort the call.
+            return ToolResult.failed("list I/O failed");
         } catch (IOException e) {
             return ToolResult.failed("list I/O failed");
         }
@@ -136,6 +142,7 @@ public final class WorkspaceTools {
             }
             List<String> hits = new ArrayList<>();
             boolean truncated = false;
+            boolean skippedUnreadable = false;
             try (Stream<Path> walk = Files.walk(dir, 6)) {
                 var it = walk.filter(Files::isRegularFile)
                     .filter(p -> !isExcludedPath(p))
@@ -151,7 +158,13 @@ public final class WorkspaceTools {
                         }
                         content = new String(raw, StandardCharsets.UTF_8);
                     } catch (IOException io) {
-                        continue; // unreadable files are skipped, not fatal
+                        // Unreadable files are skipped rather than fatal, but the skip
+                        // must be visible: without it a search that examined 9 of 10
+                        // files is indistinguishable from one that examined all 10,
+                        // and "no matches" would report absence of evidence as
+                        // evidence of absence.
+                        skippedUnreadable = true;
+                        continue;
                     }
                     String[] lines = content.split("\n", -1);
                     for (int i = 0; i < lines.length && hits.size() <= MAX_SEARCH_MATCHES; i++) {
@@ -166,10 +179,13 @@ public final class WorkspaceTools {
                 }
             }
             String body = String.join("\n", hits) + (truncated
-                ? "\n[truncated: match limit " + MAX_SEARCH_MATCHES + " reached]" : "");
-            return ToolResult.success(body, truncated);
+                ? "\n[truncated: match limit " + MAX_SEARCH_MATCHES + " reached]" : "")
+                + (skippedUnreadable ? "\n[note: some entries were unreadable and not searched]" : "");
+            return ToolResult.success(body, truncated || skippedUnreadable);
         } catch (PathBoundary.BoundaryViolation e) {
             return ToolResult.invalid(e.reason());
+                } catch (UncheckedIOException e) {
+            return ToolResult.failed("search I/O failed");
         } catch (IOException e) {
             return ToolResult.failed("search I/O failed");
         }
