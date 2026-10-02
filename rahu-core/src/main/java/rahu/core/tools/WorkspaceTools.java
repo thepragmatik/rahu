@@ -109,8 +109,19 @@ public final class WorkspaceTools {
 
             int from = fromLine == null ? 1 : Math.max(1, fromLine);
             int to = toLine == null ? lines.size() : Math.min(lines.size(), toLine);
-            if (from > to || from > lines.size()) {
-                return ToolResult.success("", false);
+            if (from > lines.size()) {
+                // Not a successful empty result: the caller asked for lines that do
+                // not exist. Reporting success-with-empty-content here made an
+                // out-of-range read byte-identical to an empty file, so the model
+                // could not tell "this file has no content" from "you asked past the
+                // end" and could not correct its next request. Line counts are not
+                // sensitive, so the message is safe to surface.
+                return ToolResult.invalid("requested line range " + from + "-" + to
+                    + " is past the end of a " + lines.size() + "-line file");
+            }
+            if (from > to) {
+                return ToolResult.invalid("requested line range " + from + "-" + to
+                    + " is inverted (fromLine must not exceed toLine)");
             }
             int end = Math.min(to, from + MAX_READ_LINES - 1);
             boolean lineTruncated = end < to;

@@ -206,7 +206,7 @@ public final class LiveTurnDriver {
             if (reservation.isEmpty()) {
                 turn.fail(TerminalReason.PROVIDER_FAILURE);
                 err.println("cost: session cost allowance exhausted — nothing was sent"
-                    + " (allowance=" + session.ledger().settled().currency() + " "
+                    + " (committed=" + session.ledger().settled().amount() + " "
                     + perRunCap + " per-run cap, "
                     + cfg.session().maxCostUsd() + " session allowance)");
                 return 3;
@@ -231,8 +231,17 @@ public final class LiveTurnDriver {
             }
 
             if (outcome instanceof ModelOutcome.Failed failed) {
+                // The reservation was taken BEFORE dispatch, so a failed generation
+                // still holds money. It must be accounted for on this path: a read
+                // timeout means the provider may well have processed and billed the
+                // request, which is the charter's definition of UNCERTAIN. Leaving
+                // the reservation open recorded it as neither, which both leaked the
+                // reservation forever and hid a probable charge from the allowance.
+                account(session, failed.usage(), reservation.get());
                 turn.fail(TerminalReason.PROVIDER_FAILURE);
-                err.println("generation failed: " + failed.kind() + " — " + failed.safeReason());
+                err.println("generation failed: " + failed.kind() + " — " + failed.safeReason()
+                    + " (ledger settled=" + session.ledger().settled().amount()
+                    + " uncertain=" + session.ledger().uncertain().amount() + ")");
                 return 4;
             }
 
@@ -331,6 +340,7 @@ public final class LiveTurnDriver {
             session.ledger().settle(reservation,
                 new MoneyAmount(BigDecimal.valueOf(micros.get(), 6), CurrencyUnit.USD), true);
         } else {
+            // No reported cost on a dispatched request is not evidence of no cost.
             session.ledger().markUncertain(reservation);
         }
     }

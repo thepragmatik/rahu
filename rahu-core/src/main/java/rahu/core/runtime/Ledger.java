@@ -56,7 +56,8 @@ public final class Ledger {
         // spent: including only reserved+uncertain meant that once a reservation
         // settled, it stopped counting, so an exhausted allowance looked empty again.
         BigDecimal total = settled.amount()
-            .add(reserved.amount().max(uncertain.amount()))
+            .add(reserved.amount())
+            .add(uncertain.amount())
             .add(amount.amount());
         if (total.compareTo(allowance.amount()) > 0) {
             return Optional.empty();
@@ -77,8 +78,22 @@ public final class Ledger {
                 + allowance.amount() + " (committed " + committedAmount() + ")"));
     }
 
-    /** Settles a reservation with actual cost; released from reserved; rolls up once. */
+    /**
+     * Settles a reservation with actual cost; released from reserved; rolls up once.
+     *
+     * <p>{@code successful} is load-bearing. A successful operation has a known real
+     * cost, so it settles. An UNSUCCESSFUL one has a cost we cannot confirm -- the
+     * request may have been processed and billed before the failure was observed (a
+     * read timeout is exactly this). Booking that as a settled real cost would
+     * overstate what we know, so it is retained as an uncertain liability instead.
+     * The parameter used to be ignored, which meant every failure was reported as a
+     * confident charge.
+     */
     public void settle(Reservation reservation, MoneyAmount actual, boolean successful) {
+        if (!successful) {
+            markUncertain(reservation);
+            return;
+        }
         requireOpen(reservation);
         reserved = subtract(reserved, reservation.amount());
         open.remove(reservation.operationId());
@@ -173,11 +188,33 @@ public final class Ledger {
         return uncertain;
     }
 
+    /**
+     * Amount still available for new paid work. Clamped at zero: a ledger that has
+     * overshot has zero available, and the sign is carried by {@link #overage()}.
+     *
+     * <p>This used to construct a {@link MoneyAmount} from a signed subtraction, so
+     * an overshot ledger threw {@code IllegalArgumentException} instead of reporting
+     * a balance -- which crashed {@code /status} at exactly the moment an operator
+     * most needs to see the numbers.
+     */
     public MoneyAmount remaining() {
-        return new MoneyAmount(
-            allowance.amount().subtract(settled.amount())
-                .subtract(reserved.amount()).subtract(uncertain.amount()),
-            allowance.currency());
+        BigDecimal left = available();
+        return new MoneyAmount(left.max(BigDecimal.ZERO), allowance.currency());
+    }
+
+    /**
+     * Signed headroom: positive when work can still be admitted, negative when the
+     * ledger has overshot its allowance by that much. This is the honest reporting
+     * value and never throws; {@code MoneyAmount} is nonnegative by construction, so
+     * an overshoot cannot be expressed in that type.
+     */
+    public BigDecimal overage() {
+        return available();
+    }
+
+    private BigDecimal available() {
+        return allowance.amount().subtract(settled.amount())
+            .subtract(reserved.amount()).subtract(uncertain.amount());
     }
 
     public boolean overshoot() {

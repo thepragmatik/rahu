@@ -257,7 +257,12 @@ public final class ChatCommand implements Callable<Integer> {
                 + ", settled=" + session.ledger().settled().amount()
                 + " " + session.ledger().settled().currency()
                 + ", uncertain=" + session.ledger().uncertain().amount()
-                + ", remaining=" + session.ledger().remaining().amount()
+                // Signed, not remaining(): an overshot ledger has a NEGATIVE
+                // headroom, and MoneyAmount is nonnegative by construction, so
+                // remaining() clamps to 0 and loses the size of the overrun. The
+                // operator asking here is trying to find out how badly it went.
+                + ", remaining=" + session.ledger().overage()
+                + (session.ledger().overshoot() ? " (OVERSPENT)" : "")
                 + ", maxTurns not reached: " + !session.maxTurnsReached());
             case "/reset" -> {
                 try {

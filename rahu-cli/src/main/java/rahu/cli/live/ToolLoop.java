@@ -340,11 +340,19 @@ public final class ToolLoop {
             result = ToolResult.failed("protocol violation: " + e.getMessage());
         }
         executedCalls.add(call.name() + " " + summarize(canonical));
+        // Non-success results carry their text in `safeReason`, never in `content`
+        // (which is "" by construction for denied/invalid/failed). Reading
+        // `content` here produced the bare strings "denied: ", "invalid: " and
+        // "failed: " -- the model was told a call was refused and given no reason,
+        // so it could not correct course. PathBoundary writes careful, safe,
+        // actionable denial text and this switch was throwing it away one layer up.
+        String reason = result.safeReason() == null || result.safeReason().isBlank()
+            ? "no reason provided" : result.safeReason();
         return switch (result.status()) {
             case SUCCESS -> result.content();
-            case DENIED -> "denied: " + result.content();
-            case INVALID -> "invalid: " + result.content();
-            case FAILED -> "failed: " + result.content();
+            case DENIED -> "denied: " + reason;
+            case INVALID -> "invalid: " + reason;
+            case FAILED -> "failed: " + reason;
         };
     }
 
