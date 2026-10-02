@@ -72,6 +72,9 @@ public final class OpenRouterProvider implements rahu.core.model.ModelProvider {
         }
         body.put("max_tokens", request.maxCompletionTokens());
         body.putObject("provider").put("require_parameters", true);
+        // Ask for the billed cost so the ledger can settle exactly (A10: an
+        // absent cost stays unknown — never a fabricated zero).
+        body.putObject("usage").put("include", true);
 
         if (request.reasoningPolicy() instanceof ReasoningPolicy.ExplicitEffort e) {
             body.putObject("reasoning").put("effort", wireEffort(e.effort()));
@@ -209,7 +212,20 @@ public final class OpenRouterProvider implements rahu.core.model.ModelProvider {
             usage.hasNonNull("completion_tokens_details")
                 && usage.get("completion_tokens_details").hasNonNull("reasoning_tokens")
                 ? usage.get("completion_tokens_details").get("reasoning_tokens").asInt() : null,
-            null);
+            parseCostMicros(usage));
+    }
+
+    /** OpenRouter reports cost in dollars; the core ledger holds exact micros. */
+    private static Long parseCostMicros(JsonNode usage) {
+        JsonNode cost = usage.path("cost");
+        if (!cost.isNumber()) {
+            return null;
+        }
+        double dollars = cost.asDouble();
+        if (Double.isNaN(dollars) || dollars < 0.0) {
+            return null;
+        }
+        return Math.round(dollars * 1_000_000.0);
     }
 
     private static ModelOutcome.Failed failed(ModelOutcome.Failed.FailureKind kind,
