@@ -1,6 +1,12 @@
 # Build status
 
-Last updated: 2026-10-02T01:20+10:00 · HEAD: S12a live wiring · Next: S12b (active routing, live traces)
+Last updated: 2026-10-02T14:55+10:00 · HEAD: 2dc6fb1 (Part 0 refactor) · Next: Track T (tool unlock) in worktree `../rahu-wt-tools`, per .hermes/plans/2026-10-02_114504 (which supersedes S12b-first ordering)
+
+## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
+
+- [x] Task 0.1 baseline: `./mvnw verify` BUILD SUCCESS, 136 tests (85 core + 9 openrouter + 7 systemone + 35 cli), clean tree @ 3252e17.
+- [x] Task 0.2 refactor: `LiveTurnDriver` extracted to `rahu-cli/src/main/java/rahu/cli/live/`; `ChatCommand.runLive` is now adapter wiring + delegation; still 136 tests; live probe `REFACTOR_OK` byte-identical footer, exit 0. Commit 2dc6fb1.
+- [x] Task 0.3 worktrees: `../rahu-wt-tools` (feat/tools-unlock), `../rahu-wt-decisions` (feat/decision-ops), both @ 2dc6fb1; `dependency:go-offline` primed first (rc=0).
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
