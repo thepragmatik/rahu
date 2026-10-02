@@ -77,4 +77,36 @@ public final class DecisionQuestions {
     public static String injectionQuestionId(String observationId) {
         return "injection:" + observationId;
     }
+
+    /**
+     * The shared relevance legend. Every candidate is scored against THIS legend so
+     * levels compare; a per-candidate legend would make the numbers incomparable and
+     * the rerank meaningless.
+     */
+    public static final List<String> RELEVANCE_LEGEND = List.of(
+        "irrelevant to the query",
+        "topically related but does not satisfy the query",
+        "satisfies the query",
+        "the single best match for the query");
+
+    /**
+     * RELEVANCE: one ordered Score question per search candidate, so the results can be
+     * reordered by relevance instead of left in filesystem order. Batched into one
+     * dispatch by {@link #relevance(List)} for the same reason injection risk is.
+     *
+     * @param candidateIds stable ids of the candidates, e.g. {@code src/A.java:12}
+     */
+    public static List<DecisionEngine.ScoreQuestion> relevance(List<String> candidateIds) {
+        List<DecisionEngine.ScoreQuestion> questions = new ArrayList<>();
+        for (String candidateId : candidateIds) {
+            questions.add(new DecisionEngine.ScoreQuestion(relevanceQuestionId(candidateId),
+                RELEVANCE_LEGEND));
+        }
+        return questions;
+    }
+
+    /** The wire id of a relevance question; shared by the builder and its caller. */
+    public static String relevanceQuestionId(String candidateId) {
+        return "relevance:" + candidateId;
+    }
 }

@@ -52,6 +52,28 @@ public interface DecisionEngine {
     }
 
     /**
+     * Ordered Score question: an ordinal level over a caller-supplied legend
+     * (systemone.md: wire type {@code score}). The legend is ordered best-last, so
+     * level indexes into it directly and levels from two candidates are comparable
+     * ONLY because they were asked against the same legend — a per-candidate legend
+     * would make the levels meaningless to compare.
+     */
+    record ScoreQuestion(String questionId, List<String> legend) implements Question {
+
+        public ScoreQuestion {
+            legend = legend == null ? List.of() : List.copyOf(legend);
+            if (questionId == null || questionId.isBlank() || legend.isEmpty()) {
+                throw new IllegalArgumentException("score question needs id and a legend");
+            }
+            for (String level : legend) {
+                if (level == null || level.isBlank()) {
+                    throw new IllegalArgumentException("score legend entries must be named");
+                }
+            }
+        }
+    }
+
+    /**
      * Ask a batch of questions over ONE dispatch (systemone.md line 9: independent
      * questions may share a request). Returns one typed result per question id, keyed
      * by question id in batch order. A question without a usable answer maps to a
@@ -91,6 +113,9 @@ public interface DecisionEngine {
         }
         if (q instanceof NoulQuestion n) {
             return n.questionId();
+        }
+        if (q instanceof ScoreQuestion s) {
+            return s.questionId();
         }
         throw new IllegalArgumentException("unsupported question type: " + q.getClass());
     }
