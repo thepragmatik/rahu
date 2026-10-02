@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-02T00:30+10:00 · HEAD: S11 complete · Next slice: S12 (final)
+Last updated: 2026-10-02T01:20+10:00 · HEAD: S12a live wiring · Next: S12b (active routing, live traces)
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
@@ -15,6 +15,7 @@ Last updated: 2026-10-02T00:30+10:00 · HEAD: S11 complete · Next slice: S12 (f
 | S09 | done | 17 new context tests (A14/A22/A23/A29/A32) + scripted two-turn chat run; 117 tests total; verify green | docs/reviews/011-s09-context-chat-review.md | 6e22c49, 7a622c2 |
 | S10 | done | 9 new eval tests + packaged eval run: smoke-v1 6/6, dogfood 3/3, exit 0, honest offline costs; live refused pending G09 prereqs; 123 tests total | docs/reviews/012-s10-eval-runner-review.md | dae0e30 |
 | S11 | done | clean-clone G01 ritual PASS (128 tests, demo/eval 6/6); config.schema.json generated+tested; DotEnv .env key source (env-first); cheap-model pool validated against live catalog; README quickstart | docs/reviews/013-s11-packaging-review.md | 38226b9, dfe1b55, 5ff95cf, ff9add0 |
+| S12a | done | live wiring: OpenRouter decisions (Jev) + budgeted live chat; 134 tests; LIVE turn verified (Jev shadow decision + nemo answer, 533ms, $0.000004 settled) | docs/reviews/014-s12a-live-wiring-review.md | 761a0df |
 
 ## Open blockers
 
