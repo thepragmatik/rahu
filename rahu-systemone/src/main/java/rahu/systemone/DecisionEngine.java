@@ -1,6 +1,8 @@
 package rahu.systemone;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import rahu.core.decision.DecisionResult;
 
@@ -49,10 +51,47 @@ public interface DecisionEngine {
         }
     }
 
-    /** Ask a batch of questions; returns typed per-question results in order. */
-    DecisionResult ask(State state, Iterable<Question> questions);
+    /**
+     * Ask a batch of questions over ONE dispatch (systemone.md line 9: independent
+     * questions may share a request). Returns one typed result per question id, keyed
+     * by question id in batch order. A question without a usable answer maps to a
+     * typed Failure for that question alone — it never fails its siblings.
+     */
+    Map<String, DecisionResult> askAll(State state, List<Question> questions);
+
+    /**
+     * Ask a batch and return the FIRST question's result. All questions still travel
+     * in the single request; per-question isolation applies. Single-question callers
+     * are unchanged by this shape.
+     */
+    default DecisionResult ask(State state, Iterable<Question> questions) {
+        List<Question> batch = new ArrayList<>();
+        questions.forEach(batch::add);
+        if (batch.isEmpty()) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "no supported questions in request");
+        }
+        String firstId = questionId(batch.get(0));
+        DecisionResult result = askAll(state, batch).get(firstId);
+        if (result == null) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "missing answer for question " + firstId);
+        }
+        return result;
+    }
 
     /** Marker interface for questions. */
     interface Question {
+    }
+
+    /** The wire id of a question. */
+    static String questionId(Question q) {
+        if (q instanceof ChoiceQuestion c) {
+            return c.questionId();
+        }
+        if (q instanceof NoulQuestion n) {
+            return n.questionId();
+        }
+        throw new IllegalArgumentException("unsupported question type: " + q.getClass());
     }
 }
