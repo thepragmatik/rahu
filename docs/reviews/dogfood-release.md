@@ -231,60 +231,84 @@ surface — feasible offline, no credentials, and it is the next increment.
 
 
 
-## G09 live smoke — RUN 2026-10-03, PASSED with one defect found and fixed
 
-Real turn against hosted `typesafe/jev-1.13`, `config.local.json`, generation
+## G09 live smoke — RUNS 2026-10-03, PASSED; guard fixed but NOT yet exercised live
+
+Live turns against hosted `typesafe/jev-1.13`, `config.local.json`, generation
 `nemo@default`, `--input-classification=approved-nonsensitive`. Full pipeline
-exercised: decision -> profile -> routing -> tool -> injection shadow -> answer
--> cost ledger.
+exercised each time: decision -> profile -> routing -> tool -> injection shadow
+-> answer -> cost ledger.
 
-Evidence (three live turns):
+### What each run proves
 
-| Run | Prompt shape | Result | Cost | Wall |
-|---|---|---|---|---|
-| 1 | "What does Money guarantee?" | route+answer, `nemo@default` conf 0.77, ledger 0.000009 USD | $0.000009 | 4075 ms |
-| 2 | "List root files, read the one containing Money" | **DEFECT**: 14+ repeats of one failing `workspace.read bin/AGENT.md` (path does not exist), no answer | — | 103 s |
-| 3 | same prompt, after fix | 2 calls, guard held, model self-corrected to "error processing your request" | $0.000011 | 6303 ms |
+| Run | Build | Calls | Outcome | Cost | Wall |
+|---|---|---|---|---|---|
+| 1 | pre-fix | 1 | answer delivered, `nemo@default` conf 0.77 | $0.000009 | 4075 ms |
+| 2 (a) | pre-fix | 14+ | **DEFECT**: one failing `workspace.read` of a nonexistent path, repeated, no answer | — | 103 s |
+| 2 (b) | pre-fix | 7 | same shape via `workspace.list`; guard absent, step cap stopped it | $0.000118 | 97685 ms |
+| 3 | pre-fix | 2 | model gave up: "error processing your request" | $0.000011 | 6303 ms |
+| 4 | **post-fix** | 1 | **no loop**; model asked a clarifying question instead of answering | $0.000011 | 4551 ms |
 
-Run 1 also showed a hallucinated path: the model invented `money.go` (a Go
-filename; this is a Java repo) and then answered from its own guess rather than
-the ENOENT observation. The boundary correctly refused to read it — no
-disclosure — but the model answered anyway. Worth watching, not a boundary
-failure.
+**Correction to the earlier note in this file.** It previously described run 3 as
+"after fix". That was wrong. `rahu-cli.jar` was built at 09:31:51, *after* run 3
+finished at 09:28:52, so every run above except run 4 executed the pre-fix jar.
+Verified by `javap` on the jar, not inferred from timestamps: the current jar's
+`ToolLoop` does reference `recordBatch`, and its `FailureKind` enum contains
+`NO_PROGRESS`.
 
-### The defect: NO_PROGRESS was dead code
+**The guard has therefore never fired in a live run.** Run 4 is the first
+post-fix turn and it did not get into the repeat shape, so the fix rests on
+`NoProgressDetectorTest` 7/7 and `ToolLoopNoProgressTest` 2/2, not on live
+evidence. That is an honest gap, not a pass.
 
-Run 2 burned real tokens in a loop the harness could not stop. Root cause:
+### The defect that started this: NO_PROGRESS was dead code
 
-- `NoProgressDetector` fingerprints a WHOLE BATCH. The stuck call sat inside a
-  batch whose other entries varied, so the fingerprint never matched itself and
-  the 3-identical-batch trigger could not fire.
-- Worse, `NoProgressDetector` was referenced ONLY by its own unit test. Nothing
-  in `main` called `recordBatch`. The loop was stopped solely by
-  `maxCallsPerStep` (default 8) in `ToolLoop.generate`. The guard was decoration.
+Run 2a burned real tokens in a loop the harness could not stop. Two causes:
+
+1. `NoProgressDetector` fingerprinted a WHOLE BATCH. The stuck call sat inside a
+   batch whose other entries varied, so the fingerprint never matched itself and
+   the three-identical-batch trigger could not fire.
+2. Worse, `NoProgressDetector` was referenced ONLY by its own unit test. Nothing
+   in `main` called `recordBatch`. The loop was stopped solely by
+   `maxCallsPerStep` (default 8) in `ToolLoop.generate`. The guard was decoration.
 
 Fixes, all red-then-green:
 
-1. `NoProgressDetector` now tracks per-call repetition, keyed on call identity
-   plus that call's OWN outcome digest. Keying on the batch digest defeated it
-   (the digest changes every turn); keying on identity alone broke the existing
+1. Per-call repetition, keyed on call identity plus that call's OWN outcome
+   digest. Keying on the batch digest defeated it (that digest changes every
+   turn, so no streak accumulated); keying on identity alone broke the existing
    rule that a changed observation is real progress. Added
    `recordBatch(List, Map<String,String>, String)`; the 2-arg form falls back to
    the batch digest, preserving all five pre-existing tests.
 2. Wired into `ToolLoop.generate` — the actual gap.
 3. New `ModelOutcome.Failed.FailureKind.NO_PROGRESS` so the reason is visible
-   rather than looking like a step-limit or provider error.
+   rather than looking like a step limit or a provider error.
 
-Two review passes were needed: the first fix keyed on the batch digest and did
-not work (caught by re-running live); the second keyed on identity alone and
-broke `differentObservationResets`. Both failures are recorded here rather than
-hidden, because both were only detectable by re-running.
+Two review passes were needed and both failed: the first keyed on the batch
+digest and did not work (caught only by re-running live); the second keyed on
+identity alone and broke `differentObservationResets`. Both are recorded here
+rather than hidden, because neither was visible from the unit test alone.
 
-Tests: `NoProgressDetectorTest` 7/7 (5 pre-existing + 2 new red-first),
-`ToolLoopNoProgressTest` 2/2 — one asserting a never-answering provider is cut
-off as NO_PROGRESS within 5 generations against a step cap of 50, one asserting
-genuinely changing observations are NOT cut off. Full `clean verify` green:
-154 core / 14 openrouter / 30 systemone / 137 cli.
+### Open problems, stated plainly
 
-Remaining live gap: run 3 ended without an answer, so the end-to-end happy path
-is evidenced by run 1 only, and one run is thin evidence for G09.
+- **G09 has never completed the happy path end to end.** Run 1 answered without
+  needing a tool. Runs 2a/2b/3 used tools and never answered. Run 4 declined to
+  answer, asking "Which file contains the Money type?" instead. Not one run has
+  read a file and returned its contents. This is the single biggest gap in M2.
+- **The guard is unproven live** (above).
+- **Hallucinated path, then answered from the guess.** Run 1 invented `money.go`
+  (a Go filename; this is a Java repo), was correctly refused by the boundary, and
+  then answered anyway from its own guess. No disclosure occurred — the boundary
+  held — but the model treated a denial as a soft no.
+- **The injection overlay scores ordinary directory listings as would-withhold.**
+  A plain `workspace.list` scored 0.29-0.39 across runs, i.e. at or above the
+  0.35 threshold, purely for being untrusted tool output. In SHADOW this is
+  harmless, and it is consistent with the recorded calibration finding (AUC 0.899,
+  but no threshold separates classes). It is further evidence that enforcement
+  must stay OFF: at this threshold a legitimate read would be withheld.
+- **G07 still carries its recorded gap** (no third-party compiled extension
+  example).
+- **A25-A32** still rest on slice reviews rather than one test each.
+
+Tests: full `clean verify` green — 154 core / 14 openrouter / 30 systemone /
+137 cli.
