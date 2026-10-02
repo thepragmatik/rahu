@@ -16,6 +16,17 @@ These documents are the implementation contract for Rahu. Requirements and scena
 - [Engineering practices](engineering.md)
 - [Design aesthetics](design.md)
 
+## Visual architecture documentation
+
+Self-contained HTML with hand-authored SVG diagrams. No CDN, no remote font, no
+telemetry: these pages make no network request, so they render identically offline.
+
+- [Overview](architecture-html/index.html) — what Rahu does and what is not finished
+- [Architecture](architecture-html/architecture.html) — layers, modules, planes, candidates, the run loop and the ledger
+- [Decision records](architecture-html/decisions.html) — the eight ADRs and what was deliberately deferred
+- [Audit evidence](architecture-html/evidence.html) — defects found across three review rounds, and the stale claims that were caught
+- Regenerate diagrams: `python3 docs/architecture-html/make_diagrams.py`
+
 ## Detailed specifications
 
 | Specification | Focus |
