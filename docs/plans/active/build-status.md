@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-02T16:10+10:00 · HEAD: dc274cd (Track T merged) · Next: Track D (decision ops) in worktree `../rahu-wt-decisions`, per .hermes/plans/2026-10-02_114504 (Part 2, phases B→C→E)
+Last updated: 2026-10-02T18:05+10:00 · HEAD: 754c024 (Track D merged) · Next: Phase D (compaction decision) and Phase F (active routing), in that order or together, per .hermes/plans/2026-10-02_113646 — both now unblocked, no remaining worktree state to preserve
 
 ## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
 
@@ -16,6 +16,20 @@ Last updated: 2026-10-02T16:10+10:00 · HEAD: dc274cd (Track T merged) · Next: 
 - [x] Merge per §4.5: rebase main → verify 138/138 → `git merge --no-ff` → diff-stat clean. Merge commit 1ab8b09; post-merge live probe on `main` reproduced `tool: workspace.read` → `rahu-parent`, exit 0.
 - [x] Follow-up fix from the merge rule: T2's `git add -A` had swept the machine-local `rahu-cli/.classpath` JDK-container line into VCS (tracked-but-ignored IDE metadata). Fixed the class: untracked all 21 IDE metadata files (.classpath/.project/.settings across modules); commit dc274cd. Final `./mvnw verify` on main: 85+9+7+37 = 138 tests, BUILD SUCCESS.
 - Note: worktree copies of gitignored `config.local.json`/`.env` were made from the main checkout (verified config holds key NAMES, not values). Live probes load `.env` only for the process (`set -a` + subshell-scoped unset after), after a first run polluted the persistent shell env and tripped two credential-fixture tests — root cause was the shell, not the code; re-verified green with the env scrubbed.
+
+## Track D — decision ops (2026-10-02, plan 2026-10-02_113646 Phases B/C/E, track boundary from 2026-10-02_114504 Part 2)
+
+- [x] B2: `TaskClass` v1 labels with UNKNOWN fail-closed default; 3/3 tests. Commit 3645461 (rebased).
+- [x] B4: `DecisionQuestions` builders for the four spec'd operations (classification / per-tool relevance / compaction / route); 4/4. Commit 41bc2d5.
+- [x] User decision (2026-10-02, mid-slice): keep the six v1 labels; DESIGN/ARCHITECTURE logged as v2 candidates in `docs/research/decision-plane-opportunities.md` with re-verify conditions. Commit 02e5d76.
+- [x] C3a: `DecisionEngine.askAll` — batching made real: one dispatch, `Map<String, DecisionResult>` keyed by question id, missing answer degrades that question alone; `ask` demoted to a delegating default. `SystemOneHttpAdapter` rewired (per-question loop moved out of `parseAnswers`; validation rules unchanged verbatim). 3/3 batch tests + 7/7 existing adapter tests. Commit f027e03.
+- [x] C3b: `ProfileDecider` — batched classification + per-tool relevance over the three workspace tools; unjudgeable tool stays (fail closed), judged-irrelevant narrows; transport failure → UNKNOWN + full permitted set. 5/5. Commit 3e17a70.
+- [x] C3: `LiveTurnDriver` sends the batched profile decision each turn and prints `profile: task=... tools=... degraded=...`. Context pressure honestly `0.0` until the compaction track provides an estimator. Commit 08d2b64.
+- [x] E2: `ToolRelevanceGate` — advisory narrowing that can never widen (out-of-set tool throws; empty judgment keeps the permitted set). 3/3. Commit 9af8b94.
+- [x] Merge per §4.5: rebase main (both tracks touched `LiveTurnDriver`; composed semantically — ToolLoop + profile block coexist, verified by grep) → verify 158/158 on the branch → `--no-ff` merge 754c024 → diff-stat inspected, expected files only.
+- [x] Live probes: `profile: task=answer tools=... degraded=false` + `DECISIONS_OK`, exit 0, $0.000007/turn. Still exactly 2 decision dispatches per turn (route + batched profile). Negative controls: live chat without `--input-classification` → exit 4 privacy-blocked; `eval` with live config (correct invocation: `--suite ... --config ...`) → exit 3 typed refusal.
+- Note: two test bugs of mine were caught by honest red runs: positional `results.get(0)` on the id-keyed Map, and a fixture-surgery regex that orphaned a trailing comma (invalid JSON, correctly rejected). Replaced by per-id assertions and a dedicated fixture file `batch-response-missing.json`.
+- Gotcha repeated from Track T: jdtls rewrote `rahu-cli/.classpath` mid-session (tracked-but-ignored on this branch until the rebase brought dc274cd in); `git checkout --` before rebase. The untrack commit now on main makes this class of noise structurally impossible going forward.
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
