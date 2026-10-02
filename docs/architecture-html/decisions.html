@@ -54,7 +54,7 @@
     <h4>The problem</h4><p>General agent frameworks control their own lifecycle, which hides exactly the routing boundaries, continuation handling and budget decisions this project exists to test.</p>
     <h4>The decision</h4><p>A small bounded loop in ordinary Java, with narrow ports for decisions, generation, tools and observations. Libraries may parse JSON and speak HTTP; none of them controls the loop.</p>
     <h4>What it costs</h4><p>Loses the ecosystem features a framework would have provided. Accepted: inspectability is the research variable here.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0001-own-loop.md">Read ADR 0001</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0001-own-loop.md">Read ADR 0001</a></p>
   </div>
 </details>
 <details>
@@ -65,7 +65,7 @@
     <h4>The problem</h4><p>Decision models answer bounded questions well and generate prose badly. Model confidence is neither permission nor evidence of a correct answer.</p>
     <h4>The decision</h4><p>Typed HTTP decisions for classification, routing, advisory tool relevance and compaction policy. Generation models write answers, summaries and tool arguments. Java owns feasibility, validation, budgets and authority.</p>
     <h4>What it costs</h4><p>A real decision service becomes an operational dependency. Accepted: a fake labelled as the real thing would defeat the research question.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0002-decision-plane.md">Read ADR 0002</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0002-decision-plane.md">Read ADR 0002</a></p>
   </div>
 </details>
 <details>
@@ -76,7 +76,7 @@
     <h4>The problem</h4><p>Choosing a model and an effort independently can produce combinations the provider does not support. Omitting a configuration value is not the same as disabling reasoning.</p>
     <h4>The decision</h4><p>Java builds the legal tuples from configured pools and capability evidence. The decision service chooses a stable candidate ID. Provider default, disabled reasoning and explicit effort are three separate policies.</p>
     <h4>What it costs</h4><p>The candidate set must be built before the decision is asked, which costs a round of local work per turn. Accepted: an impossible pair costs a paid rejection.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0003-execution-candidates.md">Read ADR 0003</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0003-execution-candidates.md">Read ADR 0003</a></p>
   </div>
 </details>
 <details>
@@ -87,7 +87,7 @@
     <h4>The problem</h4><p>The owner asked for the latest Java and permits preview features where they improve a concrete design.</p>
     <h4>The decision</h4><p>Pin the verified working distribution. Use records, sealed outcomes, pattern switches, virtual threads and structured concurrency where the semantics fit, and enable preview consistently in compilation, tests, launcher and packaging.</p>
     <h4>What it costs</h4><p>Preview features can change between releases, so the build is pinned to a verified release rather than a moving target.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0004-java-preview.md">Read ADR 0004</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0004-java-preview.md">Read ADR 0004</a></p>
   </div>
 </details>
 <details>
@@ -98,7 +98,7 @@
     <h4>The problem</h4><p>Routing decisions and failures must be observable. Event-sourcing the whole runtime would promise deterministic model regeneration, which cannot be delivered.</p>
     <h4>The decision</h4><p>Append schema-versioned JSONL from an ordinary in-memory state machine. Metadata capture is default; payload capture is explicit. Replay is deterministic only with frozen inputs and recorded outcomes.</p>
     <h4>What it costs</h4><p>Gives up the ability to reconstruct state from the log alone. Accepted: the alternative would have produced a false guarantee.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0005-traces-and-replay.md">Read ADR 0005</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0005-traces-and-replay.md">Read ADR 0005</a></p>
   </div>
 </details>
 <details>
@@ -109,7 +109,7 @@
     <h4>The problem</h4><p>Silent model selection creates surprise cost and quality. Provider aliases and capability data change often, so a baked-in list rots.</p>
     <h4>The decision</h4><p>Strict JSON against a generated schema, a closed key set, explicit model pools, and shadow mode as the default: the decision service proposes, and the configured baseline runs.</p>
     <h4>What it costs</h4><p>Shadow mode doubles decision cost while it is on. Accepted: the alternative is changing routing with no measurement.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0006-configuration-and-shadow.md">Read ADR 0006</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0006-configuration-and-shadow.md">Read ADR 0006</a></p>
   </div>
 </details>
 <details>
@@ -120,7 +120,7 @@
     <h4>The problem</h4><p>A single autonomous build should reach a usable harness. The earlier handoff allowed stopping at the first slice and left several contracts implicit.</p>
     <h4>The decision</h4><p>Require explicit coverage of all seven harness areas, with a minimal implementation or a deliberate absence. Keep four modules, read-only tools, no dynamic plugins, no cross-process recovery and no sub-agents.</p>
     <h4>What it costs</h4><p>One agent cannot claim orchestration design. Accepted: an honest single-agent position is worth more than an untested delegation claim.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0007-seven-subsystem-alpha.md">Read ADR 0007</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0007-seven-subsystem-alpha.md">Read ADR 0007</a></p>
   </div>
 </details>
 <details>
@@ -131,7 +131,7 @@
     <h4>The problem</h4><p>Excluding secrets from logs does not stop disclosure through classification, summaries, tool observations or adapter fields. Sending raw content to a privacy classifier has already disclosed it.</p>
     <h4>The decision</h4><p>Deterministic local classification before admission and again on the exact serialised body before transport. Unknown or restricted content fails closed. Explicit classification cannot override a known protected-data finding.</p>
     <h4>What it costs</h4><p>Detection is imperfect, so uncertainty blocks rather than passes. The release report states this limit rather than claiming universal detection.</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/0008-outbound-privacy.md">Read ADR 0008</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/0008-outbound-privacy.md">Read ADR 0008</a></p>
   </div>
 </details>
 </section>

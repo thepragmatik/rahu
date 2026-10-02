@@ -68,9 +68,9 @@ P0_BODY = f'''
       <tr><td>Understand the design</td><td><a href="architecture.html">Architecture</a></td><td>—</td></tr>
       <tr><td>Know why it is built this way</td><td><a href="decisions.html">Decision records</a></td><td>—</td></tr>
       <tr><td>See what review found</td><td><a href="evidence.html">Audit evidence</a></td><td>—</td></tr>
-      <tr><td>Build it</td><td><a href="../docs/runbooks/dogfood.md">Setup runbook</a></td><td><code>./mvnw clean verify</code></td></tr>
-      <tr><td>Try it with no network</td><td><a href="../docs/product.md">Product spec</a></td><td><code>bin/rahu demo</code></td></tr>
-      <tr><td>Understand a requirement</td><td><a href="../docs/specs/">Specifications</a></td><td>—</td></tr>
+      <tr><td>Build it</td><td><a href="../runbooks/dogfood.md">Setup runbook</a></td><td><code>./mvnw clean verify</code></td></tr>
+      <tr><td>Try it with no network</td><td><a href="../product.md">Product spec</a></td><td><code>bin/rahu demo</code></td></tr>
+      <tr><td>Understand a requirement</td><td><a href="../specs/">Specifications</a></td><td>—</td></tr>
     </tbody>
   </table>
   </div>
@@ -227,7 +227,7 @@ for num, title, status, context, decision, consequence in ADRS:
     <h4>The problem</h4><p>{context}</p>
     <h4>The decision</h4><p>{decision}</p>
     <h4>What it costs</h4><p>{consequence}</p>
-    <p style="margin-top:.8rem"><a href="../docs/adr/{ {'0001':'0001-own-loop','0002':'0002-decision-plane','0003':'0003-execution-candidates','0004':'0004-java-preview','0005':'0005-traces-and-replay','0006':'0006-configuration-and-shadow','0007':'0007-seven-subsystem-alpha','0008':'0008-outbound-privacy'}[num] }.md">Read ADR {num}</a></p>
+    <p style="margin-top:.8rem"><a href="../adr/{ {'0001':'0001-own-loop','0002':'0002-decision-plane','0003':'0003-execution-candidates','0004':'0004-java-preview','0005':'0005-traces-and-replay','0006':'0006-configuration-and-shadow','0007':'0007-seven-subsystem-alpha','0008':'0008-outbound-privacy'}[num] }.md">Read ADR {num}</a></p>
   </div>
 </details>''')
 
