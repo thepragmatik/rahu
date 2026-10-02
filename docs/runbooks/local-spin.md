@@ -37,7 +37,7 @@ Expected:
 ## 2. Live config sanity (no cost)
 
 ```bash
-./bin/rahu config validate --config config.local.json
+  ./bin/rahu config validate --config config.local.json
 ```
 
 Expected: `config valid: mode=live, routing=shadow`, exit 0. This makes **no** network call.

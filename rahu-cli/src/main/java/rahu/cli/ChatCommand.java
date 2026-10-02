@@ -76,7 +76,9 @@ public final class ChatCommand implements Callable<Integer> {
 
         err.println("rahu chat (offline) — /status /reset /exit, EOF to end");
         Scanner scanner = new Scanner(System.in);
+        boolean interactive = System.console() != null;
         while (scanner.hasNextLine()) {
+            prompt(interactive);
             String line = scanner.nextLine();
             if (line == null || line.isBlank()) {
                 continue;
@@ -148,7 +150,9 @@ public final class ChatCommand implements Callable<Integer> {
             + cfg.decision().model() + ", shadow routing — /status /reset /exit");
 
         Scanner scanner = new Scanner(System.in);
+        boolean interactive = System.console() != null;
         while (scanner.hasNextLine()) {
+            prompt(interactive);
             String line = scanner.nextLine();
             if (line == null || line.isBlank()) {
                 continue;
@@ -234,6 +238,15 @@ public final class ChatCommand implements Callable<Integer> {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /** Prompt only on a real terminal; piped input keeps stderr clean. */
+    private void prompt(boolean interactive) {
+        if (interactive) {
+            var err = spec.commandLine().getErr();
+            err.print("> ");
+            err.flush();
+        }
+    }
 
     private SessionState newSession(RahuConfig cfg, String label) {
         return new SessionState("chat-" + label + "-" + System.nanoTime(),
