@@ -1,9 +1,12 @@
 package rahu.core.tools;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Frozen tool registry (extensibility.md): composed once at session start,
@@ -80,6 +83,37 @@ public final class ToolRegistry {
      */
     public static ToolRegistry builtins() {
         return withWorkspace(new PathBoundary(java.nio.file.Path.of(".").toAbsolutePath()));
+    }
+
+    /**
+     * A registry narrowed to {@code permittedNames}, for an advisory tool-relevance
+     * judgment (tools.md line 7: the generation model receives only the permitted
+     * relevant tools).
+     *
+     * <p>The narrowing can only REMOVE. A name that is not registered throws rather
+     * than being silently ignored, because a relevance judgment naming an unknown
+     * tool is a protocol error, and silently dropping it would let a decision widen
+     * the set by accident. An empty name set yields an empty registry, which the
+     * caller — not this method — must treat as "keep the full set": an empty judgment
+     * is indistinguishable from an unjudgeable one.
+     */
+    public ToolRegistry restrictedTo(Set<String> permittedNames) {
+        List<Tool> kept = new ArrayList<>();
+        for (Tool tool : tools.values()) {
+            if (permittedNames.contains(tool.name())) {
+                kept.add(tool);
+            }
+        }
+        if (kept.size() != permittedNames.size()) {
+            Set<String> known = new LinkedHashSet<>();
+            tools.values().forEach(t -> known.add(t.name()));
+            permittedNames.stream().filter(n -> !known.contains(n)).findFirst().ifPresent(
+                unknown -> {
+                    throw new IllegalArgumentException(
+                        "tool-relevance judgment named an unregistered tool: " + unknown);
+                });
+        }
+        return ToolRegistry.of(kept.toArray(new Tool[0]));
     }
 
     public Optional<Tool> find(String name) {

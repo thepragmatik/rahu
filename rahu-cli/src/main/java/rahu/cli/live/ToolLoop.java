@@ -3,6 +3,7 @@ package rahu.cli.live;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 import java.util.Map;
 
 import rahu.core.ModelRef;
@@ -53,6 +54,12 @@ public final class ToolLoop {
     private SearchReranker.Result lastRerank;
     /** The user's request for this turn; relevance is judged against it. */
     private String queryText = "";
+    /**
+     * Per-turn advisory narrowing from the tool-relevance judgment. Null or empty means
+     * the full registry, because an empty judgment is indistinguishable from an
+     * unjudgeable one and must not remove every tool.
+     */
+    private Set<String> permittedThisTurn;
 
     public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
         ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
@@ -118,6 +125,24 @@ public final class ToolLoop {
         return List.copyOf(injectionJudgments);
     }
 
+    /**
+     * Narrows this turn's advertised tools to an advisory relevance judgment
+     * (tools.md line 7). Narrowing only: an empty or null set keeps the full registry,
+     * because {@code TurnProfile.from} maps an empty judgment back to the permitted
+     * set for exactly that reason. A judged-irrelevant tool therefore stops being
+     * advertised, and a model that calls it anyway gets a typed unknown-tool denial.
+     */
+    public void narrowTo(Set<String> relevantTools) {
+        this.permittedThisTurn = relevantTools == null || relevantTools.isEmpty()
+            ? null : Set.copyOf(relevantTools);
+    }
+
+    /** The tool schemas the generation request advertises. */
+    public List<rahu.core.model.ToolDescriptor> descriptorsForThisTurn() {
+        return descriptors(permittedThisTurn == null ? registry
+            : registry.restrictedTo(permittedThisTurn));
+    }
+
     /** The tool schemas the generation request advertises. */
     public static List<rahu.core.model.ToolDescriptor> descriptors(ToolRegistry registry) {
         List<rahu.core.model.ToolDescriptor> mapped = new ArrayList<>();
@@ -140,11 +165,14 @@ public final class ToolLoop {
         executedCalls.clear();
         injectionJudgments.clear();
         lastRerank = null;
+        // permittedThisTurn is deliberately NOT reset here: the driver narrows before
+        // calling generate, so clearing it here would discard the judgment the turn
+        // just made. A turn with no judgment leaves it null, which means the full set.
         queryText = lastUserText(messages);
         List<ChatMessage> conversation = new ArrayList<>(messages);
         for (int round = 0; round <= maxCallsPerStep; round++) {
             var request = new GenerationRequest(model, policy, conversation,
-                descriptors(registry), maxCompletionTokens);
+                descriptorsForThisTurn(), maxCompletionTokens);
             ModelOutcome outcome = provider.generate(request);
             if (outcome instanceof ModelOutcome.Failed) {
                 return outcome;

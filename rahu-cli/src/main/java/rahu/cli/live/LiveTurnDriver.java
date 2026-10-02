@@ -212,6 +212,13 @@ public final class LiveTurnDriver {
                 return 3;
             }
 
+            // The advisory relevance judgment is only advisory if it narrows what the
+            // model is offered. Before this call the profile was computed, printed and
+            // discarded, so a judged-irrelevant tool was still advertised.
+            if (profile != null) {
+                toolLoop.narrowTo(profile.relevantTools());
+            }
+
             long started = System.nanoTime();
             ModelOutcome outcome = toolLoop.generate(candidate.model(), candidate.reasoningPolicy(),
                 plan.messages(), maxTokens);
