@@ -4,6 +4,9 @@
 !.env.example
 config.local.json
 *.local.json
+# Catalog-derived profile evidence: a cached artifact with a fetch timestamp,
+# refetched on demand by `config validate --live-check`. Never committed.
+docs/generated/
 
 # Private run artifacts and model/data caches
 .rahu/
