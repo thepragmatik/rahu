@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 944 520" width="944" height="520" role="img" aria-labelledby="t d">
+<title id="t">The Rahu decision plane and execution plane</title>
+<desc id="d">Architecture diagram for The Rahu decision plane and execution plane. Colours carry meaning: blue is structure, teal is verified evidence, amber is degraded or risky, violet is an external boundary.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5aa2ff"/>
+  </marker>
+  <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+  </marker>
+  <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#e3a008"/>
+  </marker>
+</defs>
+<rect width="944" height="520" fill="#0d1117" rx="12"/>
+<text x="24" y="30" style="font:700 15px -apple-system,Segoe UI,sans-serif" fill="#e6edf3">Two planes, one direction of trust</text>
+<text x="24" y="49" style="font:400 11.5px ui-monospace,Menlo,monospace" fill="#6b7885">The decision plane advises. The execution plane obeys. Advice can never widen authority.</text>
+<rect x="24" y="66" width="440" height="330" rx="12" fill="none" stroke="#5aa2ff" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="40" y="90" style="font:700 11px ui-monospace,Menlo,monospace" fill="#5aa2ff">EXECUTION PLANE — owns authority</text>
+<rect x="500" y="66" width="420" height="330" rx="12" fill="none" stroke="#a78bfa" stroke-width="1.5" stroke-dasharray="6 5"/>
+<text x="516" y="90" style="font:700 11px ui-monospace,Menlo,monospace" fill="#a78bfa">DECISION PLANE — bounded advice</text>
+<rect x="48" y="108" width="392" height="60" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="48" y="108" width="3.5" height="60" rx="1.75" fill="#5aa2ff"/>
+<text x="64" y="133" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">Agent runtime</text>
+<text x="64" y="151" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">RunStateMachine, bounded loop</text>
+<rect x="48" y="186" width="392" height="72" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="48" y="186" width="3.5" height="72" rx="1.75" fill="#3fb9a5"/>
+<text x="64" y="211" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">Deterministic authority</text>
+<text x="64" y="229" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">admission, budget, privacy gate,</text>
+<text x="64" y="243" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">tool permission — plain Java</text>
+<rect x="48" y="276" width="392" height="60" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="48" y="276" width="3.5" height="60" rx="1.75" fill="#3fb9a5"/>
+<text x="64" y="301" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">Tools</text>
+<text x="64" y="319" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">read-only workspace access</text>
+<rect x="48" y="354" width="392" height="34" rx="8" fill="#161b22" stroke="#8892a0" stroke-width="1.6"/>
+<rect x="48" y="354" width="3.5" height="34" rx="1.75" fill="#8892a0"/>
+<text x="64" y="375.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">Generation provider</text>
+<rect x="524" y="108" width="372" height="60" rx="8" fill="#161b22" stroke="#a78bfa" stroke-width="1.6"/>
+<rect x="524" y="108" width="3.5" height="60" rx="1.75" fill="#a78bfa"/>
+<text x="540" y="133" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">System One decision port</text>
+<text x="540" y="151" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">classify, route, tool relevance,</text>
+<text x="540" y="165" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">compaction policy</text>
+<rect x="524" y="196" width="372" height="58" rx="8" fill="#161b22" stroke="#a78bfa" stroke-width="1.6"/>
+<rect x="524" y="196" width="3.5" height="58" rx="1.75" fill="#a78bfa"/>
+<text x="540" y="221" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">Bounded typed answers</text>
+<text x="540" y="239" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">choice, score, noul — no prose</text>
+<rect x="524" y="282" width="372" height="106" rx="8" fill="#161b22" stroke="#f2666e" stroke-width="1.6"/>
+<rect x="524" y="282" width="3.5" height="106" rx="1.75" fill="#f2666e"/>
+<text x="540" y="307" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">Cannot grant</text>
+<text x="540" y="325" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">cannot widen the model pool</text>
+<text x="540" y="339" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">cannot add a tool</text>
+<text x="540" y="353" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">cannot unblock privacy</text>
+<text x="540" y="367" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">cannot add budget</text>
+<path d="M440,140 L524,140" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<text x="482" y="132" text-anchor="middle" style="font:600 10px ui-monospace,Menlo,monospace" fill="#6b7885">request</text>
+<path d="M524,176 L440,176" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<text x="482" y="168" text-anchor="middle" style="font:600 10px ui-monospace,Menlo,monospace" fill="#6b7885">advice</text>
+<path d="M244,168 L244,186" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M244,258 L244,276" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M296,336 L296,354" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M916,160 L916,220" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<text x="24" y="425" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">The trust arrow points one way: the decision plane proposes, Java disposes.</text>
+<text x="24" y="446" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">Every bound below is enforced in ordinary testable Java, not in prompt text.</text>
+<rect x="24" y="477" width="10" height="10" rx="3" fill="#5aa2ff"/>
+<text x="40" y="486" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">runtime</text>
+<rect x="88.69999999999999" y="477" width="10" height="10" rx="3" fill="#3fb9a5"/>
+<text x="104.69999999999999" y="486" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">deterministic</text>
+<rect x="190.0" y="477" width="10" height="10" rx="3" fill="#a78bfa"/>
+<text x="206.0" y="486" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">decision port</text>
+<rect x="291.3" y="477" width="10" height="10" rx="3" fill="#f2666e"/>
+<text x="307.3" y="486" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">hard boundary</text>
+</svg>

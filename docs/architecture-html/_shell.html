@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>{title} — Rahu architecture</title>
+<meta name="description" content="{desc}">
+<link rel="stylesheet" href="rahu-docs.css">
+<link rel="stylesheet" href="rahu-docs-extra.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">Rahu <span>/</span> {short}</div>
+    <nav class="toc" aria-label="Contents">
+      {nav}
+    </nav>
+  </div>
+</header>
+
+{hero}
+
+<main id="main">
+<div class="wrap">
+{body}
+</div>
+</main>
+
+<footer>
+<div class="wrap">
+  <p><strong>Rahu</strong> — a read-only repository analysis harness.
+  Generated documentation. Every figure is hand-authored inline SVG and every
+  stylesheet and script is local: these pages make <strong>no network request
+  whatsoever</strong>, so they render identically offline and forever.</p>
+  <p>Evidence for each claim lives in the repository under
+  <code>docs/reviews/</code>, <code>docs/specs/</code> and
+  <code>docs/adr/</code>. Diagrams regenerate with
+  <code>python3 docs/architecture-html/make_diagrams.py</code>.</p>
+</div>
+</footer>
+
+<script src="rahu-docs.js" defer></script>
+</body>
+</html>

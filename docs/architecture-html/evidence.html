@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Audit evidence — Rahu architecture</title>
+<meta name="description" content="Three rounds of adversarial architecture review on Rahu: defects found, fixes applied, and the stale claims that were caught.">
+<link rel="stylesheet" href="rahu-docs.css">
+<link rel="stylesheet" href="rahu-docs-extra.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">Rahu <span>/</span> Evidence</div>
+    <nav class="toc" aria-label="Contents">
+      <a href="index.html" aria-current="true">Overview</a>
+      <a href="architecture.html" aria-current="true">Architecture</a>
+      <a href="decisions.html" aria-current="true">Decision records</a>
+      <a href="evidence.html" aria-current="true">Audit evidence</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero"><div class="wrap">
+  <h1>Audit evidence</h1>
+  <p class="lede">Three rounds of adversarial review found seventeen defects,
+  eleven of them high severity. This page records the findings, the fixes, and —
+  just as importantly — the claims that turned out to be wrong on arrival.</p>
+  <div class="kpis">
+    <div class="kpi"><span class="n">17</span><span class="l">defects found</span></div>
+    <div class="kpi"><span class="n">11</span><span class="l">high severity</span></div>
+    <div class="kpi"><span class="n">3</span><span class="l">review rounds</span></div>
+    <div class="kpi"><span class="n">4</span><span class="l">stale claims caught</span></div>
+  </div>
+</div></div>
+
+<main id="main">
+<div class="wrap">
+
+<section id="method">
+  <h2 id="how-the-audit-ran"><span class="num">01</span>How the audit ran</h2>
+  <p>Three review rounds ran as independent sub-agents, each with a different
+  lens: authority and dependency direction; state, money and failure semantics; and
+  API surface and design honesty. They read the project's own charter and tested
+  its promises against the code.</p>
+  <p>Every claim was then re-derived from the working tree before anything was
+  changed.</p>
+  <div class="note warn">
+    <span class="lbl">The finding that shaped the process</span>
+    <p>Two of the three reports contained claims that were already fixed. One
+    reported a security bug that had been corrected eleven commits earlier; another
+    read a 285-line version of a file that was 316 lines long. Both cited real
+    files and real line numbers, and both were confidently wrong.</p>
+    <p>A report that names a file and a line can still describe a file that no
+    longer exists. Every claim gets checked against the tree before it earns a
+    commit.</p>
+  </div>
+</section>
+
+<section id="findings">
+  <h2 id="what-was-found"><span class="num">02</span>What was found</h2>
+  <p>Filter by severity. Twelve of the seventeen findings are listed here; the
+  remainder are recorded in the repository reviews.</p>
+  <div class="seg" data-filter-group="find" role="group" aria-label="Filter findings">
+    <button data-filter="all" aria-pressed="true">All</button>
+    <button data-filter="high" aria-pressed="false">High</button>
+    <button data-filter="medium" aria-pressed="false">Medium</button>
+    <button data-filter="low" aria-pressed="false">Low</button>
+  </div>
+  <p id="find" role="status" aria-live="polite" style="font-size:.85rem;color:var(--ink-faint)"></p>
+  <div class="tablewrap" data-filter-group="find">
+    <table>
+      <thead><tr><th>ID</th><th>Severity</th><th>Finding</th><th>State</th><th>Commit</th></tr></thead>
+      <tbody>
+<tr data-sev="high"><td>F-12</td><td>High</td><td>Settled spend stopped counting against the allowance; an exhausted budget measured as empty</td><td>Fixed</td><td><code>dcfc0e1</code></td></tr>
+<tr data-sev="high"><td>F-13</td><td>High</td><td>A child settlement never released the parent's reservation, so the parent ran out early</td><td>Fixed</td><td><code>dcfc0e1</code></td></tr>
+<tr data-sev="high"><td>F-6</td><td>High</td><td>Three raw exception types escaped the tool boundary; one echoed a path back to the model</td><td>Fixed</td><td><code>cdef376</code></td></tr>
+<tr data-sev="high"><td>F-7</td><td>High</td><td>An empty response body threw a null pointer error out of the batch decision API</td><td>Fixed</td><td><code>5d81b85</code></td></tr>
+<tr data-sev="high"><td>F-8</td><td>High</td><td>The loopback rule existed twice; the first fix corrected only the core copy</td><td>Fixed</td><td><code>5d81b85</code></td></tr>
+<tr data-sev="high"><td>F-11</td><td>High</td><td><code>confidenceField</code> documented and schema-exposed but never read</td><td>Recorded</td><td>needs a wire-contract change</td></tr>
+<tr data-sev="medium"><td>F-9</td><td>Medium</td><td><code>Question</code> was unsealed, so a forgotten type still serialised as an empty object</td><td>Fixed</td><td><code>5d81b85</code></td></tr>
+<tr data-sev="medium"><td>F-10</td><td>Medium</td><td>NaN passed both range guards, serialising as a string and rejecting every route</td><td>Fixed</td><td><code>5d81b85</code></td></tr>
+<tr data-sev="medium"><td>F-2</td><td>Medium</td><td>Four configuration keys were documented and schema-exposed but had no effect</td><td>Fixed</td><td><code>990647f</code></td></tr>
+<tr data-sev="medium"><td>F-4</td><td>Medium</td><td>The rerank test passed vacuously; it asserted nothing that could fail</td><td>Fixed</td><td><code>4067ea0</code></td></tr>
+<tr data-sev="low"><td>F-14</td><td>Low</td><td>Transport faults collapsed to one kind, hiding whether work was actually processed</td><td>Recorded</td><td>needs an enum addition</td></tr>
+<tr data-sev="low"><td>F-15</td><td>Low</td><td><code>DecisionResult</code> is sealed with no permits clause and no exhaustive switch</td><td>Recorded</td><td>low practical risk</td></tr>
+</tbody>
+    </table>
+  </div>
+</section>
+
+<section id="patterns">
+  <h2 id="the-recurring-pattern"><span class="num">03</span>The recurring pattern</h2>
+  <p>Most of these are one defect wearing different clothes: <strong>a capability
+  that is documented, reachable, and not actually enforced.</strong></p>
+  <div class="grid">
+    <div class="card"><div class="swatch" style="background:var(--amber)"></div>
+      <h4>A rule written twice</h4>
+      <p>The loopback check lived in core and in an adapter. The first fix corrected
+      core and passed its tests, because the tests covered one copy. The security
+      property survived by luck.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--rose)"></div>
+      <h4>Absence read as evidence</h4>
+      <p>A search that skipped an unreadable file reported success. The model
+      concluded &quot;nothing found&quot; from a scan that could not finish.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--violet)"></div>
+      <h4>An open type where a closed one belongs</h4>
+      <p>An unsealed interface let a documented-but-unimplemented question type
+      serialise as <code>{}</code> — valid JSON, no answer.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--blue)"></div>
+      <h4>A comparison that inverts on NaN</h4>
+      <p>Every comparison against NaN is false, so a range guard written in
+      negative form admitted it. In the router it rejected every decision
+      permanently, with no error anywhere.</p></div>
+  </div>
+</section>
+
+<section id="stale">
+  <h2 id="claims-that-were-wrong"><span class="num">04</span>Claims that were wrong</h2>
+  <p>These did not survive verification. They are published because a review
+  process that shows only its hits cannot itself be reviewed.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Claim</th><th>Verdict</th><th>What was actually true</th></tr></thead>
+    <tbody>
+<tr><td>Loopback prefix check is a live fail-open</td><td>Stale</td><td>Already fixed at <code>4002166</code>; the report read pre-fix code</td></tr>
+<tr><td>Rerank test passes vacuously</td><td>Stale</td><td>Already fixed at <code>4067ea0</code>; the reviewer caught itself reading a pre-fix file</td></tr>
+<tr><td><code>DecisionResult</code> is sealed</td><td>Misleading</td><td>True, but it has no permits clause and every consumer uses type tests, so nothing is enforced</td></tr>
+<tr><td>Search skip marker is missing</td><td>Overstated</td><td>A real gap, but the marker alone was the weaker fix; the flag was correct</td></tr>
+</tbody>
+  </table>
+  </div>
+</section>
+
+<section id="method-notes">
+  <h2 id="how-this-project-tests"><span class="num">05</span>How this project tests itself</h2>
+  <p>The suite is stronger than average in one specific way, and it is worth
+  keeping.</p>
+  <div class="note good">
+    <span class="lbl">The pattern to preserve</span>
+    <p><code>CostGateTest.spentAllowanceRefusesBeforeDispatch</code> asserts that
+    the provider was <strong>never called</strong>, rather than that a method
+    returned a particular value. It tests the consequence, not the mechanism.</p>
+  </div>
+  <p>That distinction caught several real bugs here, and it also exposed a
+  mistake in this project's own tests: several early cases asserted that an
+  exception was thrown. When the underlying bug was fixed, those tests failed —
+  because they had pinned the defect rather than the contract. They now assert the
+  typed outcome, so they keep passing if the throw is ever removed and fail if a raw
+  exception escapes again.</p>
+  <p>One negative control in the tool-boundary suite proves a new warning marker
+  does not fire on a healthy tree. A marker that always fires is noise, and a model
+  learns to ignore noise.</p>
+</section>
+
+<section id="honest-state">
+  <h2 id="what-is-still-open"><span class="num">06</span>What is still open</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Item</th><th>Why it is open</th></tr></thead>
+    <tbody>
+      <tr><td><code>confidenceField</code> is not read</td><td>Honouring it changes the wire contract and the acceptance table, so it needs its own review. The default path is correct, so only a non-default setting is affected.</td></tr>
+      <tr><td>Transport faults share one kind</td><td>A read timeout and a connection refusal are both reported as a timeout, so a caller cannot tell whether a retry duplicates work. Needs an enum addition.</td></tr>
+      <tr><td>Acceptance A25–A32</td><td>Covered by slice reviews rather than a clean requirement-to-test pass.</td></tr>
+      <tr><td>Live dogfood run</td><td>Needs an aggregate spending ceiling from the operator.</td></tr>
+      <tr><td>Injection enforcement</td><td>Scoring is not calibrated; the lowest-scoring attacks are the subtle ones. Enforcement stays off.</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+</div>
+</main>
+
+<footer>
+<div class="wrap">
+  <p><strong>Rahu</strong> — a read-only repository analysis harness.
+  Generated documentation. Every figure is hand-authored inline SVG and every
+  stylesheet and script is local: these pages make <strong>no network request
+  whatsoever</strong>, so they render identically offline and forever.</p>
+  <p>Evidence for each claim lives in the repository under
+  <code>docs/reviews/</code>, <code>docs/specs/</code> and
+  <code>docs/adr/</code>. Diagrams regenerate with
+  <code>python3 docs/architecture-html/make_diagrams.py</code>.</p>
+</div>
+</footer>
+
+<script src="rahu-docs.js" defer></script>
+</body>
+</html>

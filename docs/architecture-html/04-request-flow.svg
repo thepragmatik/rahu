@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 952 440" width="952" height="440" role="img" aria-labelledby="t d">
+<title id="t">End-to-end flow of a single Rahu request</title>
+<desc id="d">Architecture diagram for End-to-end flow of a single Rahu request. Colours carry meaning: blue is structure, teal is verified evidence, amber is degraded or risky, violet is an external boundary.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5aa2ff"/>
+  </marker>
+  <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+  </marker>
+  <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#e3a008"/>
+  </marker>
+</defs>
+<rect width="952" height="440" fill="#0d1117" rx="12"/>
+<text x="24" y="30" style="font:700 15px -apple-system,Segoe UI,sans-serif" fill="#e6edf3">One request, end to end</text>
+<text x="24" y="49" style="font:400 11.5px ui-monospace,Menlo,monospace" fill="#6b7885">Read top to bottom. Pink steps are privacy enforcement; the run stops there, before any paid work.</text>
+<rect x="24" y="74" width="560" height="44" rx="8" fill="#161b22" stroke="#8892a0" stroke-width="1.6"/>
+<rect x="24" y="74" width="3.5" height="44" rx="1.75" fill="#8892a0"/>
+<text x="40" y="99" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">1  Configure</text>
+<text x="40" y="117" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">strict JSON, validated against a closed key set</text>
+<path d="M304,118 L304,130" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="130" width="560" height="44" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="24" y="130" width="3.5" height="44" rx="1.75" fill="#5aa2ff"/>
+<text x="40" y="155" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">2  Plan context</text>
+<text x="40" y="173" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">provenance, trust and privacy class per item</text>
+<path d="M304,174 L304,186" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="186" width="560" height="44" rx="8" fill="#161b22" stroke="#f2666e" stroke-width="1.6"/>
+<rect x="24" y="186" width="3.5" height="44" rx="1.75" fill="#f2666e"/>
+<text x="40" y="211" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">3  Privacy gate</text>
+<text x="40" y="229" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">pre-admission. Blocked here costs zero requests</text>
+<path d="M304,230 L304,242" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="242" width="560" height="44" rx="8" fill="#161b22" stroke="#a78bfa" stroke-width="1.6"/>
+<rect x="24" y="242" width="3.5" height="44" rx="1.75" fill="#a78bfa"/>
+<text x="40" y="267" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">4  Decide</text>
+<text x="40" y="285" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">System One picks a task class and a route</text>
+<path d="M304,286 L304,298" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="298" width="560" height="44" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="24" y="298" width="3.5" height="44" rx="1.75" fill="#5aa2ff"/>
+<text x="40" y="323" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">5  Candidates</text>
+<text x="40" y="341" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">code builds only feasible model x reasoning pairs</text>
+<path d="M304,342 L304,354" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="354" width="560" height="44" rx="8" fill="#161b22" stroke="#e3a008" stroke-width="1.6"/>
+<rect x="24" y="354" width="3.5" height="44" rx="1.75" fill="#e3a008"/>
+<text x="40" y="379" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">6  Reserve</text>
+<text x="40" y="397" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">pre-dispatch reservation against the ledger</text>
+<path d="M304,398 L304,410" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="410" width="560" height="44" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="24" y="410" width="3.5" height="44" rx="1.75" fill="#5aa2ff"/>
+<text x="40" y="435" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">7  Generate</text>
+<text x="40" y="453" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">one request; provider continuation preserved</text>
+<path d="M304,454 L304,466" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="466" width="560" height="44" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="24" y="466" width="3.5" height="44" rx="1.75" fill="#3fb9a5"/>
+<text x="40" y="491" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">8  Authorise tools</text>
+<text x="40" y="509" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">every proposed call re-checked before it runs</text>
+<path d="M304,510 L304,522" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="522" width="560" height="44" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="24" y="522" width="3.5" height="44" rx="1.75" fill="#3fb9a5"/>
+<text x="40" y="547" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">9  Execute serially</text>
+<text x="40" y="565" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">read-only workspace tools, bounded results</text>
+<path d="M304,566 L304,578" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="578" width="560" height="44" rx="8" fill="#161b22" stroke="#f2666e" stroke-width="1.6"/>
+<rect x="24" y="578" width="3.5" height="44" rx="1.75" fill="#f2666e"/>
+<text x="40" y="603" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">10  Re-check + settle</text>
+<text x="40" y="621" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">final serialised body re-gated, then settle</text>
+<rect x="616" y="74" width="316" height="330" rx="10" fill="none" stroke="#f2666e" stroke-width="1.4" stroke-dasharray="6 5"/>
+<text x="634" y="98" style="font:700 11px ui-monospace,Menlo,monospace" fill="#f2666e">STOP CONDITIONS</text>
+<text x="634" y="122" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• privacy finding -&gt; zero requests</text>
+<text x="634" y="148" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• cost admission denied -&gt; zero dispatch</text>
+<text x="634" y="174" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• no feasible candidate -&gt; terminate</text>
+<text x="634" y="200" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• decision malformed -&gt; typed failure</text>
+<text x="634" y="226" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• decision suggests infeasible -&gt; fallback</text>
+<text x="634" y="252" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• no progress -&gt; bounded terminal</text>
+<text x="634" y="278" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">• step / time / token limit -&gt; terminal</text>
+<text x="634" y="314" style="font:600 10.5px ui-monospace,Menlo,monospace" fill="#e3a008">Each stop is a typed outcome,</text>
+<text x="634" y="330" style="font:600 10.5px ui-monospace,Menlo,monospace" fill="#e3a008">never an exception or a guess.</text>
+</svg>

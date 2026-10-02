@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 952 440" width="952" height="440" role="img" aria-labelledby="t d">
+<title id="t">Rahu cost ledger: settled, reserved and uncertain</title>
+<desc id="d">Architecture diagram for Rahu cost ledger: settled, reserved and uncertain. Colours carry meaning: blue is structure, teal is verified evidence, amber is degraded or risky, violet is an external boundary.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5aa2ff"/>
+  </marker>
+  <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+  </marker>
+  <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#e3a008"/>
+  </marker>
+</defs>
+<rect width="952" height="440" fill="#0d1117" rx="12"/>
+<text x="24" y="30" style="font:700 15px -apple-system,Segoe UI,sans-serif" fill="#e6edf3">The ledger counts three things, not one</text>
+<text x="24" y="49" style="font:400 11.5px ui-monospace,Menlo,monospace" fill="#6b7885">settled + max(reserved, uncertain) + requested must fit the allowance. Omitting any term is a bug.</text>
+<rect x="24" y="74" width="288" height="104" rx="10" fill="#161b22" stroke="#f2666e" stroke-width="1.6"/>
+<text x="42" y="104" style="font:700 13px -apple-system,Segoe UI,sans-serif" fill="#f2666e">SETTLED</text>
+<text x="42" y="126" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">money already spent</text>
+<text x="42" y="164" style="font:600 10px ui-monospace,Menlo,monospace" fill="#f2666e">counts against the allowance</text>
+<rect x="336" y="74" width="288" height="104" rx="10" fill="#161b22" stroke="#e3a008" stroke-width="1.6"/>
+<text x="354" y="104" style="font:700 13px -apple-system,Segoe UI,sans-serif" fill="#e3a008">RESERVED</text>
+<text x="354" y="126" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">held before dispatch</text>
+<text x="354" y="164" style="font:600 10px ui-monospace,Menlo,monospace" fill="#e3a008">counts against the allowance</text>
+<rect x="648" y="74" width="288" height="104" rx="10" fill="#161b22" stroke="#a78bfa" stroke-width="1.6"/>
+<text x="666" y="104" style="font:700 13px -apple-system,Segoe UI,sans-serif" fill="#a78bfa">UNCERTAIN</text>
+<text x="666" y="126" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">ambiguous: may or may not have been billed</text>
+<text x="666" y="164" style="font:600 10px ui-monospace,Menlo,monospace" fill="#a78bfa">counts in full, until resolved</text>
+<text x="24" y="214" style="font:700 12px ui-monospace,Menlo,monospace" fill="#e6edf3">ALLOWANCE</text>
+<rect x="24" y="226" width="900" height="50" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="24" y="226" width="3.5" height="50" rx="1.75" fill="#3fb9a5"/>
+<text x="40" y="251" class="d-label" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif">session.maxCostUsd</text>
+<text x="40" y="269" style="font:400 10.5px ui-monospace,Menlo,monospace" fill="#9aa7b4">one allowance covers the run; a new turn, a compaction or a conversation reset cannot reset it</text>
+<path d="M168,226 L168,190" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M480,226 L480,190" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M792,226 L792,190" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<rect x="24" y="300" width="900" height="112" rx="10" fill="none" stroke="#5aa2ff" stroke-width="1.4" stroke-dasharray="6 5"/>
+<text x="42" y="324" style="font:700 11px ui-monospace,Menlo,monospace" fill="#5aa2ff">THREE ROLLS UP, ONE MONEY</text>
+<text x="42" y="350" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">A run ledger reserves against its session ledger, which reserves against the experiment ledger.</text>
+<text x="42" y="370" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">Each level holds the SAME reservation, so settled cost rolls up once and is never summed twice.</text>
+<text x="42" y="392" style="font:600 11px ui-monospace,Menlo,monospace" fill="#f2666e">A child overrun trips overshoot at the parent too, or one run's excess is invisible to whoever pays.</text>
+</svg>

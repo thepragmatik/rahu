@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark light">
+<title>Overview — Rahu architecture</title>
+<meta name="description" content="Rahu: a read-only repository analysis harness with a bounded decision plane. Self-contained HTML documentation, no network requests.">
+<link rel="stylesheet" href="rahu-docs.css">
+<link rel="stylesheet" href="rahu-docs-extra.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="masthead">
+  <div class="wrap">
+    <div class="brand">Rahu <span>/</span> Overview</div>
+    <nav class="toc" aria-label="Contents">
+      <a href="index.html" aria-current="true">Overview</a>
+      <a href="architecture.html" aria-current="true">Architecture</a>
+      <a href="decisions.html" aria-current="true">Decision records</a>
+      <a href="evidence.html" aria-current="true">Audit evidence</a>
+    </nav>
+  </div>
+</header>
+
+<div class="hero"><div class="wrap">
+  <h1>Rahu</h1>
+  <p class="lede">A read-only assistant that reads a repository and explains it,
+  with a small decision service proposing which model to use and which files
+  matter, and ordinary Java deciding what actually happens.</p>
+  <div class="kpis">
+    <div class="kpi"><span class="n">306</span><span class="l">tests green</span></div>
+    <div class="kpi"><span class="n">4</span><span class="l">modules</span></div>
+    <div class="kpi"><span class="n">15</span><span class="l">specifications</span></div>
+    <div class="kpi"><span class="n">8</span><span class="l">decision records</span></div>
+    <div class="kpi"><span class="n">3</span><span class="l">direct dependencies</span></div>
+  </div>
+</div></div>
+
+<main id="main">
+<div class="wrap">
+
+<section id="what">
+  <h2 id="what-it-does"><span class="num">01</span>What it does</h2>
+  <p>Rahu answers questions about a codebase. It lists files, reads them, searches
+  literal text, and writes an answer with a trace of how it got there.</p>
+  <p>It does not edit your repository, run your code, or write files. That limit is
+  the reason it is safe to point at private code.</p>
+  <div class="grid">
+    <div class="card"><div class="swatch" style="background:var(--blue)"></div>
+      <h4>Reads</h4><p>List, read and literal-search inside a workspace root, with
+      typed results and a path boundary.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--violet)"></div>
+      <h4>Decides</h4><p>A bounded decision service picks the model, reasoning
+      effort and relevant files. It proposes; Java disposes.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--amber)"></div>
+      <h4>Accounts</h4><p>Every dispatched request reserves money before it runs and
+      settles after. One session allowance covers the whole run.</p></div>
+    <div class="card"><div class="swatch" style="background:var(--rose)"></div>
+      <h4>Gates</h4><p>Outbound content is classified locally, twice: before
+      admission and again before transport.</p></div>
+  </div>
+</section>
+
+<section id="start">
+  <h2 id="start-here"><span class="num">02</span>Start here</h2>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>If you want to</th><th>Read</th><th>Run</th></tr></thead>
+    <tbody>
+      <tr><td>Understand the design</td><td><a href="architecture.html">Architecture</a></td><td>—</td></tr>
+      <tr><td>Know why it is built this way</td><td><a href="decisions.html">Decision records</a></td><td>—</td></tr>
+      <tr><td>See what review found</td><td><a href="evidence.html">Audit evidence</a></td><td>—</td></tr>
+      <tr><td>Build it</td><td><a href="../docs/runbooks/dogfood.md">Setup runbook</a></td><td><code>./mvnw clean verify</code></td></tr>
+      <tr><td>Try it with no network</td><td><a href="../docs/product.md">Product spec</a></td><td><code>bin/rahu demo</code></td></tr>
+      <tr><td>Understand a requirement</td><td><a href="../docs/specs/">Specifications</a></td><td>—</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note">
+    <span class="lbl">Verification needs no keys</span>
+    <p>The default verification path runs with no live model and no credentials.
+    Two tests read the real environment, so unset
+    <code>OPENROUTER_API_KEY</code> before <code>./mvnw verify</code> or they fail by
+    design rather than by defect.</p>
+  </div>
+</section>
+
+<section id="shape">
+  <h2 id="the-short-shape"><span class="num">03</span>The shape in one picture</h2>
+  <figure>
+      <div class="scroll">
+        <img src="02-planes.svg" alt="The decision plane advises; the execution plane decides. Every limit shown here is enforced in Java and covered by a named test." style="max-width:100%">
+      </div>
+      <div class="legend">
+        <strong>System shape</strong>
+        <span style="flex:1 1 100%">The decision plane advises; the execution plane decides. Every limit shown here is enforced in Java and covered by a named test.</span>
+      </div>
+    </figure>
+</section>
+
+<section id="honest">
+  <h2 id="what-is-not-finished"><span class="num">04</span>What is not finished</h2>
+  <p>This is a dogfood alpha. Some things are built and proven, some are built and
+  deliberately switched off, and some need an operator decision.</p>
+  <div class="tablewrap">
+  <table>
+    <thead><tr><th>Area</th><th>State</th><th>Note</th></tr></thead>
+    <tbody>
+      <tr><td>Offline build and tests</td><td><span class="badge ok">Verified</span></td><td>306 tests green on a clean verify</td></tr>
+      <tr><td>Release gates G01–G08</td><td><span class="badge ok">Verified</span></td><td>Individually evidenced in the release manifest</td></tr>
+      <tr><td>Injection detection</td><td><span class="badge warn">Shadow only</span></td><td>Scored but never enforced; calibration is unproven</td></tr>
+      <tr><td>Search reranking</td><td><span class="badge warn">Default off</span></td><td>Built and tested; needs live measurement before enforcement</td></tr>
+      <tr><td>G09 dogfood run</td><td><span class="badge mute">Operator</span></td><td>Needs an aggregate spending ceiling</td></tr>
+      <tr><td>Acceptance A25–A32</td><td><span class="badge warn">Partial</span></td><td>Covered by slice reviews rather than a clean pass</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <div class="note warn">
+    <span class="lbl">Not claimed</span>
+    <p>A green test count is not a review. A passing detector does not mean all
+    protected data was recognised. &quot;Offline complete&quot; is not declared, and
+    shadow routing stays off until a separate promotion gate supports the change.</p>
+  </div>
+</section>
+
+<section id="principles">
+  <h2 id="working-rules"><span class="num">05</span>Working rules</h2>
+  <p>Four rules shaped this codebase, and each one exists because its absence
+  caused a real defect.</p>
+  <ol>
+    <li><strong>Test the contract, not the history.</strong> A test that pins a bug
+    fails when you fix the bug. Several early tests here did exactly that.</li>
+    <li><strong>One rule, one owner.</strong> A security rule written twice is
+    enforced once. The loopback rule was duplicated, and the first fix passed its
+    tests because the tests covered one copy.</li>
+    <li><strong>Verify every claim at the current commit.</strong> Two audit rounds
+    reported defects that had already been fixed.</li>
+    <li><strong>Nothing external.</strong> No CDN, no remote font, no telemetry.
+    These pages render offline and make no network request.</li>
+  </ol>
+</section>
+
+</div>
+</main>
+
+<footer>
+<div class="wrap">
+  <p><strong>Rahu</strong> — a read-only repository analysis harness.
+  Generated documentation. Every figure is hand-authored inline SVG and every
+  stylesheet and script is local: these pages make <strong>no network request
+  whatsoever</strong>, so they render identically offline and forever.</p>
+  <p>Evidence for each claim lives in the repository under
+  <code>docs/reviews/</code>, <code>docs/specs/</code> and
+  <code>docs/adr/</code>. Diagrams regenerate with
+  <code>python3 docs/architecture-html/make_diagrams.py</code>.</p>
+</div>
+</footer>
+
+<script src="rahu-docs.js" defer></script>
+</body>
+</html>

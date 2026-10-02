@@ -1,0 +1,10 @@
+
+.copybtn{position:absolute;top:.5rem;right:.5rem;font:600 .7rem/1 var(--sans);
+  background:var(--bg-inset);color:var(--ink-muted);border:1px solid var(--rule);
+  border-radius:6px;padding:.35rem .55rem;cursor:pointer;opacity:0;transition:opacity .15s}
+pre:hover .copybtn,pre:focus-within .copybtn{opacity:1}
+.copybtn:hover{color:var(--ink);border-color:var(--rule-bright)}
+.anchor{margin-left:.4rem;color:var(--ink-faint);text-decoration:none;font-weight:400;
+  opacity:0;transition:opacity .15s;font-size:.8em}
+h2:hover .anchor,h3:hover .anchor,.anchor:focus{opacity:1}
+.anchor:hover{color:var(--blue)}

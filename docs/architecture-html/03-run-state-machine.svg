@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 952 470" width="952" height="470" role="img" aria-labelledby="t d">
+<title id="t">RunPhase state machine of the bounded run loop</title>
+<desc id="d">Architecture diagram for RunPhase state machine of the bounded run loop. Colours carry meaning: blue is structure, teal is verified evidence, amber is degraded or risky, violet is an external boundary.</desc>
+<defs>
+  <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#5aa2ff"/>
+  </marker>
+  <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/>
+  </marker>
+  <marker id="arrowA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+    <path d="M0,0 L10,5 L0,10 z" fill="#e3a008"/>
+  </marker>
+</defs>
+<rect width="952" height="470" fill="#0d1117" rx="12"/>
+<text x="24" y="30" style="font:700 15px -apple-system,Segoe UI,sans-serif" fill="#e6edf3">RunPhase — the bounded loop</text>
+<text x="24" y="49" style="font:400 11.5px ui-monospace,Menlo,monospace" fill="#6b7885">verbatim from RunStateMachine. LEGAL. A terminal phase permits no successor.</text>
+<rect x="24" y="90" width="168" height="52" rx="8" fill="#161b22" stroke="#8892a0" stroke-width="1.6"/>
+<rect x="24" y="90" width="3.5" height="52" rx="1.75" fill="#8892a0"/>
+<text x="40" y="120.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">CREATED</text>
+<rect x="208" y="90" width="168" height="52" rx="8" fill="#161b22" stroke="#a78bfa" stroke-width="1.6"/>
+<rect x="208" y="90" width="3.5" height="52" rx="1.75" fill="#a78bfa"/>
+<text x="224" y="120.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">DECIDING</text>
+<rect x="392" y="90" width="168" height="52" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="392" y="90" width="3.5" height="52" rx="1.75" fill="#5aa2ff"/>
+<text x="408" y="120.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">ADMITTED</text>
+<rect x="576" y="90" width="168" height="52" rx="8" fill="#161b22" stroke="#5aa2ff" stroke-width="1.6"/>
+<rect x="576" y="90" width="3.5" height="52" rx="1.75" fill="#5aa2ff"/>
+<text x="592" y="120.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">GENERATING</text>
+<rect x="760" y="90" width="168" height="52" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="760" y="90" width="3.5" height="52" rx="1.75" fill="#3fb9a5"/>
+<text x="776" y="120.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">VALIDATING_TOOLS</text>
+<rect x="760" y="186" width="168" height="52" rx="8" fill="#161b22" stroke="#3fb9a5" stroke-width="1.6"/>
+<rect x="760" y="186" width="3.5" height="52" rx="1.75" fill="#3fb9a5"/>
+<text x="776" y="216.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">EXECUTING_TOOLS</text>
+<rect x="576" y="186" width="168" height="52" rx="8" fill="#161b22" stroke="#e3a008" stroke-width="1.6"/>
+<rect x="576" y="186" width="3.5" height="52" rx="1.75" fill="#e3a008"/>
+<text x="592" y="216.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">COMPACTING</text>
+<rect x="392" y="186" width="168" height="52" rx="8" fill="#161b22" stroke="#f2666e" stroke-width="1.6" stroke-dasharray="5 4"/>
+<rect x="392" y="186" width="3.5" height="52" rx="1.75" fill="#f2666e"/>
+<text x="408" y="216.5" style="font:600 13px -apple-system,Segoe UI,Roboto,sans-serif" fill="#e6edf3">TERMINAL</text>
+<path d="M192,116 L208,116" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M376,116 L392,116" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M560,116 L576,116" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M744,116 L760,116" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M844,142 L844,186" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M760,212 L560,212" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<path d="M576,238 L534,238" fill="none" stroke="#5aa2ff" stroke-width="2" marker-end="url(#arrow)" stroke-linecap="round"/>
+<text x="484" y="232" text-anchor="middle" style="font:600 10px ui-monospace,Menlo,monospace" fill="#6b7885">terminal is always legal</text>
+<path d="M192,116 L192,268 L392,268 L392,238" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M296,116 L296,300 L660,300 L660,238" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<path d="M660,300 L760,300 L760,238" fill="none" stroke="#3d4855" stroke-width="1.6" stroke-linecap="round"/>
+<text x="24" y="360" style="font:600 11px ui-monospace,Menlo,monospace" fill="#e3a008">Every phase may also transition straight to TERMINAL. That is what bounds the loop.</text>
+<text x="24" y="381" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">The loop is bounded by model-step, time, token and cost admission — and by the phase table itself.</text>
+<text x="24" y="402" style="font:400 11.5px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">COMPACTING returns to DECIDING, so a context-size failure is recoverable rather than terminal.</text>
+<rect x="24" y="431" width="10" height="10" rx="3" fill="#8892a0"/>
+<text x="40" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">start</text>
+<rect x="76.5" y="431" width="10" height="10" rx="3" fill="#a78bfa"/>
+<text x="92.5" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">decision</text>
+<rect x="147.3" y="431" width="10" height="10" rx="3" fill="#5aa2ff"/>
+<text x="163.3" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">generation</text>
+<rect x="230.3" y="431" width="10" height="10" rx="3" fill="#3fb9a5"/>
+<text x="246.3" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">tools</text>
+<rect x="282.8" y="431" width="10" height="10" rx="3" fill="#e3a008"/>
+<text x="298.8" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">context pressure</text>
+<rect x="402.4" y="431" width="10" height="10" rx="3" fill="#f2666e"/>
+<text x="418.4" y="440" style="font:400 11px -apple-system,Segoe UI,sans-serif" fill="#9aa7b4">terminal</text>
+</svg>
