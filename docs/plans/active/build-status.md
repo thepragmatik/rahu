@@ -1,6 +1,6 @@
 # Build status
 
-Last updated: 2026-10-02T18:05+10:00 · HEAD: 754c024 (Track D merged) · Next: Phase D (compaction decision) and Phase F (active routing), in that order or together, per .hermes/plans/2026-10-02_113646 — both now unblocked, no remaining worktree state to preserve
+Last updated: 2026-10-02T19:40+10:00 · HEAD: a84ab64 (F3b) + Phase D/F1/F2 landed · Next: F3c verification record (below, uncommitted at time of writing) then the cost-gate finding; Phases A–F are otherwise complete
 
 ## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
 
@@ -30,6 +30,24 @@ Last updated: 2026-10-02T18:05+10:00 · HEAD: 754c024 (Track D merged) · Next: 
 - [x] Live probes: `profile: task=answer tools=... degraded=false` + `DECISIONS_OK`, exit 0, $0.000007/turn. Still exactly 2 decision dispatches per turn (route + batched profile). Negative controls: live chat without `--input-classification` → exit 4 privacy-blocked; `eval` with live config (correct invocation: `--suite ... --config ...`) → exit 3 typed refusal.
 - Note: two test bugs of mine were caught by honest red runs: positional `results.get(0)` on the id-keyed Map, and a fixture-surgery regex that orphaned a trailing comma (invalid JSON, correctly rejected). Replaced by per-id assertions and a dedicated fixture file `batch-response-missing.json`.
 - Gotcha repeated from Track T: jdtls rewrote `rahu-cli/.classpath` mid-session (tracked-but-ignored on this branch until the rebase brought dc274cd in); `git checkout --` before rebase. The untrack commit now on main makes this class of noise structurally impossible going forward.
+
+## Phase D + Phase F (2026-10-02, plan 2026-10-02_113646) — resumed after the provider interruption
+
+Resume point: F2 was mid-flight (`ModelProfileCatalog` written, 5/5 green, uncommitted). Everything below was completed on resumption; 194 tests green at F3b (100 core + 14 openrouter + 14 systemone + 66 cli).
+
+- [x] D1 `0c9d311`, D2 `e6cb864`, D2 fix `79aac62` (pre-resumption, landed by the interrupted session): compaction policy honours the System One decision with a deterministic override; the live loop applies it and reports real context pressure instead of the 0.0 placeholder; the fit check and the policy note see the candidate NEXT-REQUEST list, and a fit-check override is no longer mislabelled as `defer`.
+
+- [x] F2a `5da36fb`: catalog fetch caches versioned evidence (`schemaVersion`/`fetchedAt`/models); TTL-gated refetch, staleness bounded, unparsable price stays unknown, unparsable timestamp is maximally stale. 5/5.
+- [x] F2b `68dc228`: `config validate --live-check` resolves per-pool-model evidence; `LiveCheckReport` renders `alias: ctx=… in=$…/M out=$…/M tools=… fresh=…` purely, with the admission verdict as its own concern. Real run against the live catalog, exit 0: `nemo: ctx=131072 in=$0.019/M out=$0.030/M tools=true fresh=true` (plan's example format reproduced exactly), plus `granite: … tools=false`. Unresolved evidence refuses with exit 2; without the flag nothing is fetched (evidence timestamp unchanged across runs).
+- [x] F1 `b0df19d` (pre-resumption): paid admission evidence-gated — priceless, stale or missing profiles exclude the candidate.
+- [x] F3a `236ea2b`: `ActiveRouter` builds candidates from REAL evidence and offers the decision exactly those labels. 7/7. Two guards proved necessary by test: the decision labels must equal the candidate ids (a mismatch degrades every decision to the baseline by construction), and a configured baseline/fallback that evidence excludes must fail at STARTUP (`routing.fallback quality@medium is not an executable candidate (no-tool-support)`) instead of per-turn `NO_FEASIBLE_ROUTE`.
+- [x] F3b `a84ab64`: live turns execute the resolved candidate. `LiveTurnDriver` gained `routeDecision`/`executed`; `ChatCommand` builds the router from `ProfileEvidence` (fail-closed: absent or stale evidence → excluded unless `allowStale`). Shadow mode re-probed unchanged (4 candidates, granite excluded, baseline executes, exit 0). No provider rebuild needed: `ToolLoop.generate(ModelRef, ReasoningPolicy, …)` already takes the model per call.
+- [x] F3c (local config only, `config.local.json` is gitignored): `routing.mode` flipped `shadow` → `active`. **The model now changes**: `route: suggested=- executed=qwen@default mode=ACTIVE degraded=true fallback=decision-rejected` — Jev chose `oss@medium` at confidence 0.06, the resolver rejected it, and the FALLBACK executed (not the baseline `nemo@default`), with real tool calls and exit 0. A second run also executed `qwen@default`. Fail-closed paths observed live: malformed probabilities (`sum 0.99`) → `fallback=decision-missing`, degraded, fallback executed.
+- Test-side defects I hit and fixed rather than worked around: the price renderer dropped the `/M` suffix and rendered `$0.03` beside `$0.019` (now quantised to a 3-decimal floor); `ConfigLoader` already refuses a missing pool, so my ActiveRouter-level guard for it was dead code and was removed; `ExecutionCandidate` exposes `reasoningPolicy()`, not `policy()`.
+
+### Open finding — the session cost allowance is not a pre-dispatch gate (pre-existing, NOT introduced by F3)
+
+Reproduced with `session.maxCostUsd = "0.00"` and active routing: the turn ran, the provider billed `$0.000008`, and the run reported `ledger=0 USD`, exit 0. Cause: `LiveTurnDriver.account()` calls `Ledger.tryReserve` AFTER dispatch, and on an empty reservation it returns silently — so the allowance never stops a turn and a refused reservation leaves the spend unrecorded rather than terminating the run. `session.maxTurns` IS enforced (`beginTurn` throws → exit 3). F3 changed nothing in the ledger path. This is a real unbounded-spend hole for any long live run and wants its own TDD slice (reserve the per-run cap BEFORE dispatch; refuse the turn with exit 3 on refusal) — deliberately not folded into F3.
 
 | Slice | Status | Evidence (commands + results) | Review | Commit(s) |
 |---|---|---|---|---|
