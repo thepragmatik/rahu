@@ -26,15 +26,17 @@ public final class CompactionPolicyDecider {
     }
 
     /**
-     * Consults COMPACTION_POLICY for the given history and returns the plan's
+     * Consults COMPACTION_POLICY for the candidate next-request message list
+     * (stored history plus the pending user request) and returns the plan's
      * effective policy. Never throws and never drops context: any failure
      * degrades to the deterministic planner run with no decision attached.
      */
-    public Consult consult(List<ChatMessage> history, int contextAllowanceTokens) {
+    public Consult consult(List<ChatMessage> nextRequestMessages, int contextAllowanceTokens) {
         java.util.Optional<rahu.core.decision.DecisionResult> answer = java.util.Optional.empty();
         String note = null;
         try {
-            var state = new DecisionEngine.State("COMPACTION_POLICY", requestView(history), 0.0);
+            var state = new DecisionEngine.State("COMPACTION_POLICY",
+                requestView(nextRequestMessages), 0.0);
             var answers = engine.askAll(state,
                 List.of(rahu.systemone.DecisionQuestions.compactionPolicy()));
             answer = java.util.Optional.ofNullable(answers.get("compaction"));
@@ -42,7 +44,7 @@ public final class CompactionPolicyDecider {
             answer = java.util.Optional.empty();
             note = "unavailable (" + e.getClass().getSimpleName() + ")";
         }
-        var plan = CompactionPlanner.plan(history, answer, contextAllowanceTokens, 2);
+        var plan = CompactionPlanner.plan(nextRequestMessages, answer, contextAllowanceTokens, 2);
         boolean answered = answer.isPresent();
         if (answered) {
             note = policyNote(plan.policy());
@@ -50,11 +52,12 @@ public final class CompactionPolicyDecider {
         return new Consult(plan.policy(), answered, note);
     }
 
-    /** Bounded request view: recent units only, never the full history. */
-    private static String requestView(List<ChatMessage> history) {
-        int from = Math.max(0, history.size() - 4);
-        var view = new StringBuilder("current estimated context pressure; recent units:");
-        for (ChatMessage m : history.subList(from, history.size())) {
+    /** Bounded request view: the last few units, including the pending request. */
+    private static String requestView(List<ChatMessage> nextRequestMessages) {
+        int from = Math.max(0, nextRequestMessages.size() - 4);
+        var view = new StringBuilder("estimated context pressure is above the 80% trigger;"
+            + " recent units and the pending request:");
+        for (ChatMessage m : nextRequestMessages.subList(from, nextRequestMessages.size())) {
             String content = m.content();
             view.append(' ').append(content, 0, Math.min(80, content.length()));
         }

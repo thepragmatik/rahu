@@ -154,9 +154,14 @@ public final class LiveTurnDriver {
             //     deterministic fit check overrides, and context is never dropped
             //     without an executed summary (summary execution is the
             //     summarisation track; this records the decision and the plan).
+            //     The consult sees the candidate NEXT-REQUEST list (history +
+            //     pending line) so the fit check sees what the next request
+            //     actually needs, not just what history already holds.
             if (pressure >= 0.80) {
+                var candidate = new java.util.ArrayList<>(session.history());
+                candidate.add(ChatMessage.user(line));
                 var consult = new CompactionPolicyDecider(decision)
-                    .consult(session.history(), allowance);
+                    .consult(candidate, allowance);
                 err.println("compaction: policy=" + consult.policy().name().toLowerCase(Locale.ROOT)
                     + " pressure=" + String.format(Locale.ROOT, "%.2f", pressure)
                     + " — " + consult.safeNote());

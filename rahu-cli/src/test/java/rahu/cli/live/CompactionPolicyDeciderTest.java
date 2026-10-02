@@ -111,4 +111,20 @@ class CompactionPolicyDeciderTest {
             "the fit check wins over an honoured defer");
         assertTrue(consult.answered());
     }
+
+    @Test
+    @DisplayName("A pending request that alone busts the allowance forces CONCISE (live regression)")
+    void pendingRequestCountsTowardTheFitCheck() {
+        // Live probe regression: history alone fits, but history + the pending
+        // request does not. The consult sees the candidate next-request list,
+        // so defer must be overridden even on the first turn.
+        var engine = new FakeEngine(choice("defer", 0.9));
+        // 800 chars + 8 framing bytes ≈ 270 estimated tokens > 220 allowance.
+        var candidate = List.of(ChatMessage.user("x".repeat(800)));
+
+        var consult = new CompactionPolicyDecider(engine).consult(candidate, 220);
+
+        assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy(),
+            "the next request cannot fit; defer must not be honoured");
+    }
 }

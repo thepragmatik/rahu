@@ -56,7 +56,8 @@ public final class CompactionPlanner {
     /**
      * Chooses the policy: System One's answer; a failed or absent answer
      * defaults to CONCISE (fail closed) and the deterministic fit check can
-     * still override an explicit DEFER when the next request cannot fit.
+     * still override an explicit DEFER when the candidate next-request list
+     * (the same content the caller's pressure measurement contains) cannot fit.
      */
     public static Plan plan(List<ChatMessage> history, Optional<DecisionResult> decision,
         int contextAllowanceTokens, int maxRecentTurns) {
@@ -73,14 +74,22 @@ public final class CompactionPlanner {
             requested = Policy.CONCISE;
         }
 
+        // The fit check estimates the candidate NEXT-REQUEST list (stored
+        // history plus the pending request) — the same content the 80% pressure
+        // measurement contains. Estimating history alone would let a request
+        // that cannot fit be "honoured" as defer.
         int estimated = PromptAssembler.estimateTokens(
             history.isEmpty() ? List.of(ChatMessage.user("")) : history, Integer.MAX_VALUE);
         boolean cannotFit = estimated >= contextAllowanceTokens;
 
         Policy effective = (requested == Policy.DEFER && cannotFit) ? Policy.CONCISE : requested;
         if (effective == Policy.DEFER || history.size() <= RECENT_TURNS * MESSAGES_PER_TURN) {
+            // Nothing to summarise (no completed units beyond the recent window):
+            // summarySourceUnits is 0, but the recorded policy is still the
+            // effective requirement — a fit-check override must not be reported
+            // as "defer / context fits" when the next request cannot fit.
             int keep = Math.min(history.size(), RECENT_TURNS * MESSAGES_PER_TURN);
-            return new Plan(Policy.DEFER, 0, history.subList(history.size() - keep,
+            return new Plan(effective, 0, history.subList(history.size() - keep,
                 history.size()));
         }
 
