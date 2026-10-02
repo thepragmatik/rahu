@@ -196,6 +196,22 @@ public final class LiveTurnDriver {
 
             turn.recordUser(ChatMessage.user(line));
             var candidate = executed(routing.resolution());
+
+            // The cost gate is a PRE-dispatch gate. Reserving after the provider call
+            // would let the turn run (and be billed) with an exhausted allowance, and a
+            // refused reservation would leave the spend unrecorded instead of stopping the
+            // turn. Reserve the per-run cap first; refuse the turn (exit 3) if refused.
+            var reservation = session.ledger().tryReserve(
+                new MoneyAmount(perRunCap, CurrencyUnit.USD), turn.runId());
+            if (reservation.isEmpty()) {
+                turn.fail(TerminalReason.PROVIDER_FAILURE);
+                err.println("cost: session cost allowance exhausted — nothing was sent"
+                    + " (allowance=" + session.ledger().settled().currency() + " "
+                    + perRunCap + " per-run cap, "
+                    + cfg.session().maxCostUsd() + " session allowance)");
+                return 3;
+            }
+
             long started = System.nanoTime();
             ModelOutcome outcome = toolLoop.generate(candidate.model(), candidate.reasoningPolicy(),
                 plan.messages(), maxTokens);
@@ -216,7 +232,7 @@ public final class LiveTurnDriver {
             ModelOutcome.Completed done = (ModelOutcome.Completed) outcome;
             out.println(done.answer());
             turn.recordAssistant(ChatMessage.assistant(done.answer()));
-            account(session, turn, done.usage(), perRunCap);
+            account(session, done.usage(), reservation.get());
             err.println("model=" + candidate.model().providerNeutralId()
                 + " (" + candidate.id() + ") · " + usageLine(done.usage())
                 + " · " + elapsedMs + " ms · ledger=" + session.ledger().settled().amount()
@@ -294,23 +310,21 @@ public final class LiveTurnDriver {
                 "resolved candidate is not in the executable set: " + id));
     }
 
-    /** Settles the ledger with the billed cost, or marks it uncertain when unreported (A10). */
-    private void account(SessionState session, SessionState.RunHandle turn, Usage usage,
-        BigDecimal perRunCap) {
-        if (perRunCap.signum() <= 0) {
-            return;
-        }
-        var reservation = session.ledger().tryReserve(
-            new MoneyAmount(perRunCap, CurrencyUnit.USD), turn.runId());
-        if (reservation.isEmpty()) {
-            return;
-        }
+    /**
+     * Settles the pre-dispatch reservation with the billed cost, or marks it uncertain
+     * when the cost was unreported (A10).
+     *
+     * <p>The reservation was taken BEFORE dispatch so an exhausted allowance could refuse
+     * the turn; this method only settles what was already reserved.
+     */
+    private void account(SessionState session, Usage usage,
+        rahu.core.runtime.Ledger.Reservation reservation) {
         var micros = usage.totalCostMicrosOpt();
         if (micros.isPresent()) {
-            session.ledger().settle(reservation.get(),
+            session.ledger().settle(reservation,
                 new MoneyAmount(BigDecimal.valueOf(micros.get(), 6), CurrencyUnit.USD), true);
         } else {
-            session.ledger().markUncertain(reservation.get());
+            session.ledger().markUncertain(reservation);
         }
     }
 
