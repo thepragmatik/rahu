@@ -203,6 +203,9 @@ public final class LiveTurnDriver {
             for (String executed : toolLoop.executedCalls()) {
                 err.println("tool: " + executed);
             }
+            for (var judged : toolLoop.injectionJudgments()) {
+                err.println(injectionLine(judged));
+            }
 
             if (outcome instanceof ModelOutcome.Failed failed) {
                 turn.fail(TerminalReason.PROVIDER_FAILURE);
@@ -233,6 +236,17 @@ public final class LiveTurnDriver {
     }
 
     /** One turn's routing outcome: the resolution plus the raw decision evidence. */
+    /**
+     * One shadow/enforce judgment for the stderr trail: the observation id, the
+     * verdict, the score, and whether anything was withheld. Never the text.
+     */
+    private static String injectionLine(ToolLoop.InjectionJudgment judged) {
+        var d = judged.disposition();
+        return "injection: " + judged.observationId() + " verdict=" + d.verdict()
+            + " score=" + d.probability().map(String::valueOf).orElse("absent")
+            + (d.wouldHaveWithheld() ? (d.withholds() ? " withheld" : " would-withhold") : "");
+    }
+
     private record Routing(rahu.core.routing.RouteResolution resolution, String note) {
     }
 

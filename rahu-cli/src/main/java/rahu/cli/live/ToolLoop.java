@@ -28,7 +28,9 @@ import rahu.core.tools.WorkspaceTools;
  * cannot name its way outside the workspace root. Repeated call IDs follow the
  * A09 dedup contract via WorkspaceTools/ToolCallLog; arguments and observations
  * are privacy-scanned before they re-enter model-visible context (privacy.md),
- * with the session's operator-established provenance — unknown fails closed.
+ * with the session's operator-established provenance — unknown fails closed. An
+ * admitted observation is then judged for prompt-injection risk before it becomes
+ * model-visible; that overlay never widens what the privacy gate allows.
  */
 public final class ToolLoop {
 
@@ -39,11 +41,14 @@ public final class ToolLoop {
     private final PrivacyGate gate;
     private final WorkspaceTools workspace;
     private final Provenance provenance;
+    private final InjectionGate injection;
     private final int maxCallsPerStep;
     private final List<String> executedCalls = new ArrayList<>();
+    private final List<InjectionJudgment> injectionJudgments = new ArrayList<>();
 
     public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
-        ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep) {
+        ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
+        InjectionGate injection) {
         this.registry = registry;
         this.boundary = boundary;
         this.provider = provider;
@@ -51,7 +56,21 @@ public final class ToolLoop {
         this.gate = gate;
         this.workspace = new WorkspaceTools(boundary);
         this.provenance = provenance;
+        this.injection = injection;
         this.maxCallsPerStep = maxCallsPerStep;
+    }
+
+    /**
+     * One injection judgment for the current turn: what was judged and what the
+     * configured mode did with it. Carries no observation text, so the trail is
+     * safe to print verbatim.
+     */
+    public record InjectionJudgment(String observationId, InjectionGate.Disposition disposition) {
+    }
+
+    /** Injection judgments for the current turn, in observation order. */
+    public List<InjectionJudgment> injectionJudgments() {
+        return List.copyOf(injectionJudgments);
     }
 
     /** The tool schemas the generation request advertises. */
@@ -74,6 +93,7 @@ public final class ToolLoop {
         List<ChatMessage> messages, int maxCompletionTokens) {
 
         executedCalls.clear();
+        injectionJudgments.clear();
         List<ChatMessage> conversation = new ArrayList<>(messages);
         for (int round = 0; round <= maxCallsPerStep; round++) {
             var request = new GenerationRequest(model, policy, conversation,
@@ -107,7 +127,10 @@ public final class ToolLoop {
     /**
      * Executes one call; every failure becomes data the model can read, never an
      * exception. Protected observations yield generic safe-denial metadata, never
-     * the offending value.
+     * the offending value. An observation the privacy gate admitted is then judged
+     * for injection risk: in ENFORCE a would-withhold observation is replaced with
+     * denial metadata before it becomes model-visible, in SHADOW the judgment is
+     * only recorded.
      */
     private String observe(ToolCall call) {
         var tool = registry.find(call.name());
@@ -120,9 +143,15 @@ public final class ToolLoop {
             return "denied: arguments not admitted (privacy: " + blocked.category() + ")";
         }
         String observation = observationOf(call, canonical);
-        if (gate.admitForDecision(SafeView.of("tool-obs-" + call.id(), provenance, observation))
+        String observationId = "tool-obs-" + call.id();
+        if (gate.admitForDecision(SafeView.of(observationId, provenance, observation))
             instanceof PrivacyGate.Decision.Blocked blocked) {
             return "denied: observation withheld (privacy: " + blocked.category() + ")";
+        }
+        var disposition = injection.assess(observationId, observation);
+        injectionJudgments.add(new InjectionJudgment(observationId, disposition));
+        if (disposition.withholds()) {
+            return "denied: observation withheld (injection risk)";
         }
         return observation;
     }

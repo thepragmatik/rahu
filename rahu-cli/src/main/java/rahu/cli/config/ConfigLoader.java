@@ -26,7 +26,7 @@ public final class ConfigLoader {
     private static final Set<String> TOP_KEYS = Set.of(
         "schemaVersion", "mode", "decision", "generation", "routing", "pools",
         "summarisation", "agent", "catalog", "tools", "trace", "context",
-        "session", "orchestration", "privacy");
+        "session", "orchestration", "privacy", "injection");
     private static final Set<String> ENV_FIELDS = Set.of(
         "decision.model", "generation.apiKeyEnv", "decision.apiKeyEnv");
     private static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{([A-Z_][A-Z0-9_]*)}");
@@ -93,6 +93,7 @@ public final class ConfigLoader {
         var decision = bindDecision(root.get("decision"));
         var generation = bindGeneration(root.get("generation"));
         var routing = bindRouting(root.get("routing"));
+        var injection = bindInjection(root.get("injection"));
         Map<String, List<RahuConfig.PoolEntry>> pools = bindPools(root.get("pools"));
         var summarisation = bindSummarisation(root.get("summarisation"), routing);
         var agent = bindAgent(root.get("agent"));
@@ -125,7 +126,7 @@ public final class ConfigLoader {
 
         return new RahuConfig(schemaVersion, mode, decision, generation, routing, pools,
             summarisation, agent, catalog, tools, trace, context, session,
-            new RahuConfig.OrchestrationConfig(orchestration), privacy);
+            new RahuConfig.OrchestrationConfig(orchestration), privacy, injection);
     }
 
     private RahuConfig.DecisionConfig bindDecision(JsonNode n) {
@@ -152,6 +153,26 @@ public final class ConfigLoader {
             resolveEnv(optString(n, "apiKeyEnv"), "generation.apiKeyEnv"),
             n.has("requireParameters") ? n.get("requireParameters").asBoolean() : null,
             n.has("allowedProviders") ? stringList(n.get("allowedProviders")) : null);
+    }
+
+    /**
+     * Injection overlay config. The block is optional: an absent block is the
+     * documented off|0.10 default, so a config written before G1 still loads.
+     */
+    private RahuConfig.InjectionConfig bindInjection(JsonNode n) {
+        if (n == null) {
+            return RahuConfig.InjectionConfig.defaults();
+        }
+        String m = n.path("mode").asText("off");
+        if (!m.equals("off") && !m.equals("shadow") && !m.equals("enforce")) {
+            throw new ConfigError(
+                "injection.mode must be off|shadow|enforce, got \"" + m + "\"");
+        }
+        Double threshold = n.has("threshold") ? n.get("threshold").asDouble() : 0.10;
+        if (threshold < 0.0 || threshold > 1.0) {
+            throw new ConfigError("injection.threshold must be in [0,1]");
+        }
+        return new RahuConfig.InjectionConfig(m, threshold);
     }
 
     private RahuConfig.RoutingConfig bindRouting(JsonNode n) {

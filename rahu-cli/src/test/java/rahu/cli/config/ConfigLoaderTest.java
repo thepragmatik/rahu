@@ -120,6 +120,36 @@ class ConfigLoaderTest {
     }
 
     @Test
+    @DisplayName("An absent injection block loads as the documented off default")
+    void injectionDefaultsWhenAbsent() throws Exception {
+        var cfg = new ConfigLoader().load(write(VALID_CONFIG));
+        assertEquals("off", cfg.injection().modeOrDefault());
+        assertEquals(0.10, cfg.injection().thresholdOrDefault());
+    }
+
+    @Test
+    @DisplayName("injection.mode only accepts off|shadow|enforce")
+    void injectionModeVocabulary() throws Exception {
+        Path shadow = write(VALID_CONFIG.replace("\"schemaVersion\": 1,",
+            "\"schemaVersion\": 1, \"injection\": {\"mode\": \"shadow\"},"));
+        assertEquals("shadow", new ConfigLoader().load(shadow).injection().modeOrDefault());
+        Path bogus = write(VALID_CONFIG.replace("\"schemaVersion\": 1,",
+            "\"schemaVersion\": 1, \"injection\": {\"mode\": \"block\"},"));
+        ConfigError e = assertThrows(ConfigError.class, () -> new ConfigLoader().load(bogus));
+        assertTrue(e.getMessage().contains("injection.mode"));
+        assertTrue(e.getMessage().contains("off|shadow|enforce"));
+    }
+
+    @Test
+    @DisplayName("injection.threshold outside [0,1] is refused before any call")
+    void injectionThresholdRange() throws Exception {
+        Path p = write(VALID_CONFIG.replace("\"schemaVersion\": 1,",
+            "\"schemaVersion\": 1, \"injection\": {\"threshold\": 1.5},"));
+        ConfigError e = assertThrows(ConfigError.class, () -> new ConfigLoader().load(p));
+        assertTrue(e.getMessage().contains("injection.threshold"));
+    }
+
+    @Test
     @DisplayName("Routing references must resolve within their named pool")
     void routingReferencesResolve() throws Exception {
         Path p = write(VALID_CONFIG.replace("\"baseline\": \"fast@low\"",

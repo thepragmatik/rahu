@@ -146,9 +146,12 @@ public final class ChatCommand implements Callable<Integer> {
         var loop = new rahu.cli.live.ToolLoop(registry, boundary, provider,
             new rahu.core.tools.ToolCallLog(), new rahu.core.privacy.PrivacyGate(),
             provenance(cfg),
-            cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep());
+            cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep(),
+            new rahu.cli.live.InjectionGate(decision, injectionMode(cfg.injection()),
+                cfg.injection().thresholdOrDefault()));
 
-        err.println("rahu chat (live) — routing " + router.mode()
+        err.println("rahu chat (live) — injection " + injectionMode(cfg.injection())
+            + " — routing " + router.mode()
             + ", pool " + cfg.routing().pool() + ", candidates "
             + router.candidates().candidates().size() + ", decision "
             + cfg.decision().model() + " — /status /reset /exit");
@@ -158,6 +161,16 @@ public final class ChatCommand implements Callable<Integer> {
     }
 
     // ---------------------------------------------------------------- helpers
+
+    /** Config mode to gate mode; ConfigLoader has already refused anything else. */
+    private static rahu.cli.live.InjectionGate.Mode injectionMode(
+        RahuConfig.InjectionConfig cfg) {
+        return switch (cfg.modeOrDefault()) {
+            case "shadow" -> rahu.cli.live.InjectionGate.Mode.SHADOW;
+            case "enforce" -> rahu.cli.live.InjectionGate.Mode.ENFORCE;
+            default -> rahu.cli.live.InjectionGate.Mode.OFF;
+        };
+    }
 
     /** Prompt only on a real terminal; piped input keeps stderr clean. */
     private void prompt(boolean interactive) {

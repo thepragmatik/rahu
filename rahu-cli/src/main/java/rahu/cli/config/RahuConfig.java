@@ -24,7 +24,8 @@ public record RahuConfig(
     ContextConfig context,
     SessionConfig session,
     OrchestrationConfig orchestration,
-    PrivacyConfig privacy) {
+    PrivacyConfig privacy,
+    InjectionConfig injection) {
 
     public record OrchestrationConfig(String mode) {
     }
@@ -39,6 +40,26 @@ public record RahuConfig(
 
     public record RoutingConfig(String mode, String pool, String baseline, String fallback,
         String confidenceField, Double confidenceFloor, Integer maximumCandidates) {
+    }
+
+    /**
+     * Prompt-injection overlay on tool observations. {@code mode} is off|shadow|enforce;
+     * shadow records what would have been withheld without withholding it, which is
+     * the only mode allowed before the guardrail's observation count is met.
+     */
+    public record InjectionConfig(String mode, Double threshold) {
+
+        public static InjectionConfig defaults() {
+            return new InjectionConfig("off", 0.10);
+        }
+
+        public String modeOrDefault() {
+            return mode == null || mode.isBlank() ? "off" : mode;
+        }
+
+        public double thresholdOrDefault() {
+            return threshold == null ? 0.10 : threshold;
+        }
     }
 
     public record PoolEntry(String alias, String id, List<String> reasoning,
