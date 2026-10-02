@@ -125,10 +125,18 @@ public final class ChatCommand implements Callable<Integer> {
 
         var session = newSession(cfg, "live");
 
+        var boundary = new rahu.core.tools.PathBoundary(
+            java.nio.file.Path.of(cfg.tools().root()));
+        var registry = rahu.core.tools.ToolRegistry.withWorkspace(boundary);
+        var loop = new rahu.cli.live.ToolLoop(registry, boundary, provider,
+            new rahu.core.tools.ToolCallLog(), new rahu.core.privacy.PrivacyGate(),
+            provenance(cfg),
+            cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep());
+
         err.println("rahu chat (live) — model " + baseline.id() + ", decision "
             + cfg.decision().model() + ", shadow routing — /status /reset /exit");
 
-        return new LiveTurnDriver(cfg, provider, decision, session, provenance(cfg),
+        return new LiveTurnDriver(cfg, provider, decision, session, provenance(cfg), loop,
             line -> handleSlash(line, session), out, err).run();
     }
 

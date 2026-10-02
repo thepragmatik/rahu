@@ -42,18 +42,20 @@ public final class LiveTurnDriver {
     private final DecisionEngine decision;
     private final SessionState session;
     private final Provenance provenance;
+    private final ToolLoop toolLoop;
     private final Function<String, Integer> slashHandler;
     private final PrintWriter out;
     private final PrintWriter err;
 
     public LiveTurnDriver(RahuConfig cfg, ModelProvider provider, DecisionEngine decision,
-        SessionState session, Provenance provenance, Function<String, Integer> slashHandler,
-        PrintWriter out, PrintWriter err) {
+        SessionState session, Provenance provenance, ToolLoop toolLoop,
+        Function<String, Integer> slashHandler, PrintWriter out, PrintWriter err) {
         this.cfg = cfg;
         this.provider = provider;
         this.decision = decision;
         this.session = session;
         this.provenance = provenance;
+        this.toolLoop = toolLoop;
         this.slashHandler = slashHandler;
         this.out = out;
         this.err = err;
@@ -133,11 +135,13 @@ public final class LiveTurnDriver {
             }
 
             turn.recordUser(ChatMessage.user(line));
-            var request = new GenerationRequest(new ModelRef(baseline().id()),
-                ReasoningPolicy.ProviderDefault.INSTANCE, plan.messages(), List.of(), maxTokens);
             long started = System.nanoTime();
-            ModelOutcome outcome = provider.generate(request);
+            ModelOutcome outcome = toolLoop.generate(new ModelRef(baseline().id()),
+                ReasoningPolicy.ProviderDefault.INSTANCE, plan.messages(), maxTokens);
             long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
+            for (String executed : toolLoop.executedCalls()) {
+                err.println("tool: " + executed);
+            }
 
             if (outcome instanceof ModelOutcome.Failed failed) {
                 turn.fail(TerminalReason.PROVIDER_FAILURE);
