@@ -52,8 +52,12 @@ public final class Ledger {
         if (overshoot) {
             return Optional.empty();
         }
-        BigDecimal committed = reserved.amount().max(uncertain.amount());
-        BigDecimal total = committed.add(amount.amount());
+        // ALL THREE components constrain admission. Settled money is money already
+        // spent: including only reserved+uncertain meant that once a reservation
+        // settled, it stopped counting, so an exhausted allowance looked empty again.
+        BigDecimal total = settled.amount()
+            .add(reserved.amount().max(uncertain.amount()))
+            .add(amount.amount());
         if (total.compareTo(allowance.amount()) > 0) {
             return Optional.empty();
         }
@@ -80,7 +84,7 @@ public final class Ledger {
         open.remove(reservation.operationId());
         settled = add(settled, actual);
         if (parent != null) {
-            parent.rollUp(actual);
+            parent.settleUp(reservation.amount(), actual);
         }
         if (settled.amount().add(uncertain.amount())
             .compareTo(allowance.amount()) > 0) {
@@ -88,13 +92,44 @@ public final class Ledger {
         }
     }
 
-    /** Parent-side roll-up of a child's settled cost (counted once). */
-    private void rollUp(MoneyAmount actual) {
+    /**
+     * Parent-side handling of a child's terminal outcome (counted once).
+     *
+     * The parent's `reserved` was incremented when the CHILD reserved, so this must
+     * release it for the same amount the child released. It must NOT release
+     * `actual`: a provider that bills more than estimated must leave the full
+     * estimate committed and additionally raise `overshoot`, so the parent refuses
+     * further work rather than quietly recovering headroom that was never spent.
+     *
+     * Releasing the reservation and rolling up the settled cost are separate
+     * operations because they are not equal.
+     */
+    private void settleUp(MoneyAmount released, MoneyAmount actual) {
+        requireSameCurrency(released, actual);
+        reserved = subtract(reserved, released);
         settled = add(settled, actual);
         if (settled.amount().add(uncertain.amount())
             .compareTo(allowance.amount()) > 0) {
             overshoot = true;
         }
+    }
+
+    /**
+     * Parent-side handling when a child's outcome was AMBIGUOUS: the reservation
+     * becomes an uncertain liability at the parent too, not a released one.
+     */
+    private void uncertainUp(MoneyAmount released) {
+        reserved = subtract(reserved, released);
+        uncertain = add(uncertain, released);
+        if (settled.amount().add(uncertain.amount())
+            .compareTo(allowance.amount()) > 0) {
+            overshoot = true;
+        }
+    }
+
+    /** Parent-side handling when a child's reservation was definitely never used. */
+    private void releaseUp(MoneyAmount released) {
+        reserved = subtract(reserved, released);
     }
 
     /** Ambiguous paid outcome: retain full amount as uncertain liability. */
@@ -103,6 +138,9 @@ public final class Ledger {
         reserved = subtract(reserved, reservation.amount());
         open.remove(reservation.operationId());
         uncertain = add(uncertain, reservation.amount());
+        if (parent != null) {
+            parent.uncertainUp(reservation.amount());
+        }
     }
 
     /** Releases a definitely-unused reservation (late privacy block). */
@@ -110,6 +148,9 @@ public final class Ledger {
         requireOpen(reservation);
         reserved = subtract(reserved, reservation.amount());
         open.remove(reservation.operationId());
+        if (parent != null) {
+            parent.releaseUp(reservation.amount());
+        }
     }
 
     /**
@@ -144,7 +185,8 @@ public final class Ledger {
     }
 
     private BigDecimal committedAmount() {
-        return reserved.amount().max(uncertain.amount());
+        return settled.amount()
+            .add(reserved.amount().max(uncertain.amount()));
     }
 
     private void requireOpen(Reservation reservation) {
