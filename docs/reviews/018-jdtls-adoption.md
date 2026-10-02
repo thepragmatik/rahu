@@ -80,32 +80,39 @@ The server really does advertise `renameProvider`, `referencesProvider`,
 `definitionProvider`, `workspaceSymbolProvider`, `codeActionProvider` and an
 `executeCommandProvider` carrying Java commands.
 
-### Cost-effectiveness verdict: NOT YET PROVEN
+### Cost-effectiveness verdict: NOT PROVEN — and the blocker is real
 
-~1.5 s per session is cheap in wall-clock terms, but that is **not** the
-comparison that matters. The question is whether it beats what the agent already
-does, and the honest answer is that this has not been measured:
+Three runs show the plumbing is stable and fast enough (~970 ms startup, ~540 ms
+per query). That is **not** the comparison that decides whether to wire this in.
 
-- jdtls gives **exact** references, rename and type info. Grep gives approximate
-  refs and costs tokens; the compiler gives exact compiles and costs ~30 s.
-- The saving is only real if the agent currently burns tokens on symbol discovery
-  often enough to matter. **That has not been quantified.**
+The real question is whether exact symbol facts beat what the agent does today
+(grep for approximate refs, the compiler for exact compiles), and that turns on
+token spend. **That baseline cannot be collected from this repo.**
 
-So the verdict is neither "it works, ship it" nor "it doesn't work". It is
-"the plumbing works, the economics are unmeasured".
+Checked and confirmed absent:
 
-**Token baseline still to be collected** (the numbers the decision needs):
+- `results/` — does not exist.
+- No `*.jsonl` traces anywhere outside `node_modules`.
+- No cost/usage/token evidence under `docs/`.
 
-1. Mean tool-call tokens for a Java edit in `rahu-core`.
-2. Edit-retry count (a compile cycle that returns an error the agent must fix).
-3. Mean tool-call tokens for a "where is X used" question.
+There is no ledger output and no trace corpus, so the three baseline numbers
+(mean tool-call tokens for a Java edit, edit-retry count, mean tokens for a
+"where is X used" question) have no source. They would require a live dogfood run
+against a funded provider, which is an operator decision, not a code change.
 
-### Leak found and fixed
+**Decision: Task 5 (the `ToolRegistry` wiring) is NOT done, deliberately.** Writing
+`CodeIntelTool` now would be building on an unmeasured bet. The client is committed,
+usable, and tested; the wiring waits for the baseline.
 
-The first cost probe hung on run 2 with two jdtls processes alive. `close()`
-did not reap the server. A leaked server holds the workspace index lock, so the
-next run cannot start against the same directory — a leak here is not a slow
-down, it is a hard failure on the following run. Fixed: `close()` is now
-idempotent, waits briefly for a clean exit, destroys only if still alive, and
-closes both streams. `closeLeavesNoJdtlsProcessBehind` guards it.
+What is already established, and is the part that was in doubt:
+
+- jdtls 1.61.0 snapshot is fully capable — `renameProvider`, `referencesProvider`,
+  `definitionProvider`, `workspaceSymbolProvider`, `codeActionProvider` and an
+  `executeCommandProvider` with Java commands, 26 capabilities total.
+- A working client costs ~1.5 s per session and leaks nothing.
+- `workspace/symbol("DecisionEngine")` returns a real hit.
+
+The original premise — "the LSP server is not enough at the moment" — was wrong on
+the capability side and right on the integration side. The server was always
+enough; nothing was driving it. That is now fixed.
 
