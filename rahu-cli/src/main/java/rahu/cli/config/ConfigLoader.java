@@ -34,6 +34,17 @@ public final class ConfigLoader {
 
     private final ObjectMapper mapper = new ObjectMapper();
 
+    /**
+     * The top-level keys this loader accepts.
+     *
+     * <p>Exposed so the published schema can be tested for documenting every key the
+     * loader honours; the two drifting apart is how a valid config ends up flagged by
+     * editor validation.
+     */
+    public static Set<String> acceptedTopLevelKeys() {
+        return TOP_KEYS;
+    }
+
     public RahuConfig load(Path file) {
         String raw;
         try {

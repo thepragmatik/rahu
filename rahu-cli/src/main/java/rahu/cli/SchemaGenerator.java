@@ -141,6 +141,23 @@ public final class SchemaGenerator {
                     "allowStale": {"type": "boolean"},
                     "maximumStaleSeconds": {"type": "integer", "minimum": 1}
                   }
+                },
+                "summarisation": {
+                  "type": "object",
+                  "description": "Optional separate pool for compaction summaries. Absent means summarisation shares the routing pool.",
+                  "properties": {
+                    "pool": {"type": "string"},
+                    "baseline": {"type": "string"},
+                    "fallback": {"type": "string"}
+                  }
+                },
+                "injection": {
+                  "type": "object",
+                  "description": "Injection-risk overlay on tool observations. Absent means off. Do not set enforce until the shadow threshold is calibrated: the InjecAgent 0.10 does not transfer to real observations.",
+                  "properties": {
+                    "mode": {"type": "string", "enum": ["off", "shadow", "enforce"]},
+                    "threshold": {"type": "number", "minimum": 0, "maximum": 1}
+                  }
                 }
               },
               "additionalProperties": true
