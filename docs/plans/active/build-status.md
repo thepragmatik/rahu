@@ -1,6 +1,12 @@
 # Build status
 
-Last updated: 2026-10-02T19:40+10:00 · HEAD: a84ab64 (F3b) + Phase D/F1/F2 landed · Next: F3c verification record (below, uncommitted at time of writing) then the cost-gate finding; Phases A–F are otherwise complete
+Last updated: 2026-10-02T17:03+10:00 · HEAD: 4027bd8 · Track T + Track D merged, Phases A–F
+complete, Phase G1 built and SHADOW-ONLY (do not enforce — see G1c). 211 tests green.
+Next: the cost-gate finding (pre-dispatch reservation), then G1 follow-ups (batched injection
+questions per turn; 50-observation corpus), then G2 (search rerank). G3 stays deferred.
+
+> Correction 2026-10-02T17:03: this header previously read `HEAD: a84ab64 (F3b)` and
+> "Next: F3c", which was three phases stale. Corrected to the real HEAD and the real queue.
 
 ## Groundwork (2026-10-02, plan 2026-10-02_114504 Part 0)
 
@@ -35,7 +41,7 @@ Last updated: 2026-10-02T19:40+10:00 · HEAD: a84ab64 (F3b) + Phase D/F1/F2 land
 
 - [x] G1a `773a192`: `InjectionGate` judges ONE untrusted observation (Noul question per observation, `INJECTION_RISK` operation, observation as the state request). 9/9. The mode→consequence mapping lives in `Disposition` (`withholds()` true only in ENFORCE) so the call site cannot get it wrong. Observations past the 16 KiB state bound are truncated, never thrown. Spec updated: `docs/specs/systemone.md` now lists the operation.
 - [x] G1b `fb4da52`: wired into `ToolLoop.observe()` AFTER the privacy admit and BEFORE the observation re-enters history, behind a new optional `injection` config block (`off|shadow|enforce`, threshold default 0.10; absent block = off, so pre-G1 configs still load). 5/5 wiring tests drive the real tool-calling loop with a scripted provider, so the assertions are on exactly what the model would read. Trail is printed per turn as `injection: <obsId> verdict=… score=… would-withhold`, carrying no observation text. 211 tests green.
-- [x] G1c **shadow evidence — and a decision NOT to enforce**: 10 real observations judged by the live decision plane (`typesafe/jev-1.13`), threshold 0.10, corpus in `/tmp/inj-ws-3`:
+- [x] G1c **shadow evidence — and a decision NOT to enforce**: 10 real observations judged by the live decision plane (`typesafe/jev-1.13`), threshold 0.10. The corpus was scratch-only and has been deleted, so these scores are not reproducible from this record; re-create the corpus from the styles named below when continuing (operator constraint below).
 
   | observation | score | at 0.10 |
   |---|---|---|
@@ -89,9 +95,26 @@ Reproduced with `session.maxCostUsd = "0.00"` and active routing: the turn ran, 
 
 ## Open blockers
 
-- G09 live dogfood: BLOCKED — OpenRouter API key ABSENT (presence check only, value never read);
-  decision service at 127.0.0.1:8000 ABSENT. Offline work unaffected; live prerequisites list
-  recorded per docs/runbooks/dogfood.md.
+> Correction 2026-10-02T17:03: this section previously read "G09 live dogfood: BLOCKED —
+> OpenRouter API key ABSENT (presence check only, value never read)". That is no longer true
+> and was actively misleading. Verified state:
+
+- **OPENROUTER_API_KEY is PRESENT** in `.env` (presence check only; value never read or
+  logged). Live chat, live decisions and live eval have all run green against it.
+- **Decisions run through OpenRouter, not a local service.** The live decision adapter is
+  `openrouter-decisions` against `https://openrouter.ai/api/v1/../alpha/decisions`, profile
+  `jev-compatible-v1`, model `typesafe/jev-1.13`. Jev answers the same Boolean/noul questions
+  the System One protocol defines, which is why Phase D/E/F/G could be validated live.
+- **A genuine supplied System One service is still ABSENT** — nothing is listening on
+  127.0.0.1:8000 (connection refused, re-verified 2026-10-02T17:03). This is what actually
+  blocks the final verification block (`001-dogfood.md` line 121: "using a genuine supplied
+  System One service and OpenRouter").
+- Consequence for the release gate: conformance against the REAL System One service is
+  **unverified**. Jev compatibility is evidence that the protocol is implemented correctly,
+  not evidence of upstream conformance. Per `001-dogfood.md` line 126 the honest disposition
+  is "M2 offline complete / live unverified" with the exact missing input named — which is a
+  service URL + credentials for a supplied System One deployment, plus an explicit budget for
+  the bounded live run.
 
 ## Environment pins
 
@@ -109,6 +132,11 @@ Reproduced with `session.maxCostUsd = "0.00"` and active routing: the turn ran, 
 - Package roots: rahu.core / rahu.openrouter / rahu.systemone / rahu.cli.
 - Rollback note: build rollback = `rm -rf ~/work/ai/github/java-based-agentic-harness/rahu`;
   nothing outside this directory is modified by the build.
+  **AMENDED 2026-10-02T17:03 — do NOT run that command yet.** `main` is 66 commits AHEAD of
+  `origin/main` and has never been pushed; the rollback note would destroy the entire body of
+  work with no remote copy. Push (or open a PR) before any destructive cleanup, and drop the
+  two worktrees only after confirming both are merged — verified merged as of this date:
+  `feat/decision-ops` and `feat/tools-unlock` are both fully contained in `main`.
 
 ## Preflight record (T0)
 
