@@ -54,6 +54,25 @@ public record RahuConfig(
 
     public record CatalogConfig(Integer cacheTtlSeconds, Boolean allowStale,
         Integer maximumStaleSeconds, String offlineFixture) {
+
+        /** The documented defaults, also used when a config omits the block. */
+        public static CatalogConfig defaults() {
+            return new CatalogConfig(86400, false, 172800, null);
+        }
+
+        /** Seconds before cached evidence is refetched (a REFETCH question). */
+        public int ttlSeconds() {
+            return cacheTtlSeconds == null ? 86400 : cacheTtlSeconds;
+        }
+
+        /** Seconds after which evidence stops buying paid admission (an ADMISSION question). */
+        public int staleSeconds() {
+            return maximumStaleSeconds == null ? 172800 : maximumStaleSeconds;
+        }
+
+        public boolean staleAllowed() {
+            return Boolean.TRUE.equals(allowStale);
+        }
     }
 
     public record ToolsConfig(String root, List<String> enabled, List<String> exclusions,

@@ -1,5 +1,6 @@
 package rahu.cli;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Scanner;
@@ -101,13 +102,6 @@ public final class ChatCommand implements Callable<Integer> {
         var err = spec.commandLine().getErr();
         var out = spec.commandLine().getOut();
 
-        RahuConfig.PoolEntry baseline = baselineEntry(cfg);
-        if (baseline == null) {
-            err.println("routing.pool \"" + cfg.routing().pool()
-                + "\" has no models; fix the config before a live run");
-            return 2;
-        }
-
         ModelProvider provider;
         DecisionEngine decision;
         try {
@@ -123,6 +117,27 @@ public final class ChatCommand implements Callable<Integer> {
             return 2;
         }
 
+        // Paid admission is evidence-gated: the pool is reduced to candidates the
+        // catalog can prove, and an inadmissible baseline or fallback refuses here
+        // rather than degrading every turn later.
+        rahu.cli.live.ActiveRouter router;
+        try {
+            router = new rahu.cli.live.ActiveRouter(cfg,
+                rahu.cli.live.ProfileEvidence.load(cfg,
+                    java.nio.file.Path.of("docs/generated/model-profiles.json")));
+        } catch (IOException e) {
+            err.println("profile evidence unavailable: " + e.getMessage()
+                + " — run `rahu config validate --live-check` to fetch it");
+            return 2;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            err.println("profile evidence lookup interrupted");
+            return 2;
+        } catch (IllegalStateException e) {
+            err.println("routing refused: " + e.getMessage());
+            return 2;
+        }
+
         var session = newSession(cfg, "live");
 
         var boundary = new rahu.core.tools.PathBoundary(
@@ -133,11 +148,13 @@ public final class ChatCommand implements Callable<Integer> {
             provenance(cfg),
             cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep());
 
-        err.println("rahu chat (live) — model " + baseline.id() + ", decision "
-            + cfg.decision().model() + ", shadow routing — /status /reset /exit");
+        err.println("rahu chat (live) — routing " + router.mode()
+            + ", pool " + cfg.routing().pool() + ", candidates "
+            + router.candidates().candidates().size() + ", decision "
+            + cfg.decision().model() + " — /status /reset /exit");
 
-        return new LiveTurnDriver(cfg, provider, decision, session, provenance(cfg), loop,
-            line -> handleSlash(line, session), out, err).run();
+        return new LiveTurnDriver(cfg, provider, decision, router, session,
+            provenance(cfg), loop, line -> handleSlash(line, session), out, err).run();
     }
 
     // ---------------------------------------------------------------- helpers

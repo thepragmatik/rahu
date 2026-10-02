@@ -6,11 +6,13 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Scanner;
 import java.util.function.Function;
 
 import rahu.cli.config.RahuConfig;
 import rahu.core.CurrencyUnit;
+import rahu.core.ExecutionCandidate;
 import rahu.core.ModelRef;
 import rahu.core.MoneyAmount;
 import rahu.core.ReasoningPolicy;
@@ -46,6 +48,7 @@ public final class LiveTurnDriver {
     private final RahuConfig cfg;
     private final ModelProvider provider;
     private final DecisionEngine decision;
+    private final ActiveRouter router;
     private final SessionState session;
     private final Provenance provenance;
     private final ToolLoop toolLoop;
@@ -54,11 +57,12 @@ public final class LiveTurnDriver {
     private final PrintWriter err;
 
     public LiveTurnDriver(RahuConfig cfg, ModelProvider provider, DecisionEngine decision,
-        SessionState session, Provenance provenance, ToolLoop toolLoop,
+        ActiveRouter router, SessionState session, Provenance provenance, ToolLoop toolLoop,
         Function<String, Integer> slashHandler, PrintWriter out, PrintWriter err) {
         this.cfg = cfg;
         this.provider = provider;
         this.decision = decision;
+        this.router = router;
         this.session = session;
         this.provenance = provenance;
         this.toolLoop = toolLoop;
@@ -129,9 +133,20 @@ public final class LiveTurnDriver {
             double pressure = Math.min(1.0,
                 plan.estimatedTokens() / (double) plan.contextAllowanceTokens());
 
-            String note = shadowDecision(decision, cfg, line);
-            if (note != null) {
-                err.println("decision (shadow, " + cfg.decision().model() + "): " + note);
+            // 2. Routing decision. The labels offered are the executable candidate
+            //    ids, so a decision the resolver can accept actually changes the
+            //    executed model in active mode. In shadow mode the same call
+            //    records the suggestion while the baseline still executes.
+            var routing = routeDecision(decision, line);
+            err.println(ActiveRouter.describe(routing.resolution()));
+            if (routing.note() != null) {
+                err.println("decision (" + router.mode() + ", " + cfg.decision().model()
+                    + "): " + routing.note());
+            }
+            if (routing.resolution().terminalReason().isPresent()) {
+                err.println("routing terminal: " + routing.resolution().terminalReason().get()
+                    + " — nothing was sent");
+                return 3;
             }
 
             // 2b. Batched profile decision (classification + per-tool relevance) in
@@ -180,9 +195,10 @@ public final class LiveTurnDriver {
             }
 
             turn.recordUser(ChatMessage.user(line));
+            var candidate = executed(routing.resolution());
             long started = System.nanoTime();
-            ModelOutcome outcome = toolLoop.generate(new ModelRef(baseline().id()),
-                ReasoningPolicy.ProviderDefault.INSTANCE, plan.messages(), maxTokens);
+            ModelOutcome outcome = toolLoop.generate(candidate.model(), candidate.reasoningPolicy(),
+                plan.messages(), maxTokens);
             long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
             for (String executed : toolLoop.executedCalls()) {
                 err.println("tool: " + executed);
@@ -198,28 +214,14 @@ public final class LiveTurnDriver {
             out.println(done.answer());
             turn.recordAssistant(ChatMessage.assistant(done.answer()));
             account(session, turn, done.usage(), perRunCap);
-            err.println("model=" + baseline().id() + " · " + usageLine(done.usage())
+            err.println("model=" + candidate.model().providerNeutralId()
+                + " (" + candidate.id() + ") · " + usageLine(done.usage())
                 + " · " + elapsedMs + " ms · ledger=" + session.ledger().settled().amount()
                 + " " + session.ledger().settled().currency());
             turn.complete();
         }
         err.println("eof: chat ended; history is memory-only and does not survive exit");
         return 0;
-    }
-
-    /** Baseline alias ("nemo@default") resolves to a pool entry; first entry is the fallback. */
-    private RahuConfig.PoolEntry baseline() {
-        List<RahuConfig.PoolEntry> pool = cfg.pools().get(cfg.routing().pool());
-        String alias = cfg.routing().baseline();
-        if (alias != null && alias.contains("@")) {
-            alias = alias.substring(0, alias.indexOf('@'));
-        }
-        for (RahuConfig.PoolEntry entry : pool) {
-            if (entry.alias().equals(alias)) {
-                return entry;
-            }
-        }
-        return pool.get(0);
     }
 
     /** Prompt only on a real terminal; piped input keeps stderr clean. */
@@ -230,35 +232,52 @@ public final class LiveTurnDriver {
         }
     }
 
-    /** Shadow-mode decision: recorded for evidence, never allowed to block the baseline. */
-    private String shadowDecision(DecisionEngine decision, RahuConfig cfg, String prompt) {
-        Map<String, String> criteria = new LinkedHashMap<>();
-        List<RahuConfig.PoolEntry> pool = cfg.pools().get(cfg.routing().pool());
-        if (pool != null) {
-            for (RahuConfig.PoolEntry entry : pool) {
-                String effort = entry.reasoning().isEmpty() ? "default" : entry.reasoning().get(0);
-                criteria.put(entry.alias() + "@" + effort,
-                    entry.description() == null ? entry.id() : entry.description());
-            }
-        }
+    /** One turn's routing outcome: the resolution plus the raw decision evidence. */
+    private record Routing(rahu.core.routing.RouteResolution resolution, String note) {
+    }
+
+    /**
+     * Asks the decision plane which executable candidate to run, then resolves it.
+     *
+     * <p>The criteria come from the candidate set, never from the raw pool: a decision
+     * whose labels the resolver does not recognise degrades to the baseline by
+     * construction, which would make active routing a silent no-op.
+     */
+    private Routing routeDecision(DecisionEngine engine, String prompt) {
+        Map<String, String> criteria = router.criteria();
         if (criteria.size() < 2) {
-            return null;
+            return new Routing(router.resolve(Optional.empty()),
+                criteria.isEmpty() ? null : "single candidate; no routing decision asked");
         }
         try {
             var state = new DecisionEngine.State("route", prompt, 0.0);
-            DecisionResult result = decision.ask(state,
+            DecisionResult result = engine.ask(state,
                 List.of(new DecisionEngine.ChoiceQuestion("route", criteria)));
             if (result instanceof DecisionResult.ValidChoice choice) {
-                return choice.chosenLabel() + " (confidence "
-                    + choice.rawConfidence().map(Object::toString).orElse("unknown") + ")";
+                return new Routing(router.resolve(Optional.of(result)),
+                    choice.chosenLabel() + " (confidence "
+                        + choice.rawConfidence().map(Object::toString).orElse("unknown") + ")");
             }
             if (result instanceof DecisionResult.Failure failure) {
-                return "unavailable (" + failure.safeReason() + ")";
+                return new Routing(router.resolve(Optional.empty()),
+                    "unavailable (" + failure.safeReason() + ")");
             }
-            return "unavailable";
+            return new Routing(router.resolve(Optional.empty()), "unavailable");
         } catch (RuntimeException e) {
-            return "failed (" + e.getClass().getSimpleName() + ")";
+            return new Routing(router.resolve(Optional.empty()),
+                "failed (" + e.getClass().getSimpleName() + ")");
         }
+    }
+
+    /** The candidate the resolver selected for execution. */
+    private ExecutionCandidate executed(rahu.core.routing.RouteResolution resolution) {
+        String id = resolution.executedId().orElseThrow(() -> new IllegalStateException(
+            "resolution has no executed candidate"));
+        return router.candidates().candidates().stream()
+            .filter(candidate -> candidate.id().equals(id))
+            .findFirst()
+            .orElseThrow(() -> new IllegalStateException(
+                "resolved candidate is not in the executable set: " + id));
     }
 
     /** Settles the ledger with the billed cost, or marks it uncertain when unreported (A10). */

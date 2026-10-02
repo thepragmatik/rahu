@@ -37,9 +37,6 @@ public final class ConfigCommand {
         description = "Structural validation; no model calls unless --live-check.")
     public static final class Validate implements Callable<Integer> {
 
-        private static final int DEFAULT_CACHE_TTL_SECONDS = 86400;
-        private static final int DEFAULT_MAX_STALE_SECONDS = 172800;
-
         @Option(names = "--config", required = true, description = "Config JSON path")
         Path config;
 
@@ -77,12 +74,11 @@ public final class ConfigCommand {
          * shown stale evidence (and can allow it) without a fetch being implied.
          */
         private int checkEvidence(RahuConfig c, PrintWriter out) {
-            RahuConfig.CatalogConfig catalog = c.catalog();
-            int ttl = catalog == null || catalog.cacheTtlSeconds() == null
-                ? DEFAULT_CACHE_TTL_SECONDS : catalog.cacheTtlSeconds();
-            int maxStale = catalog == null || catalog.maximumStaleSeconds() == null
-                ? DEFAULT_MAX_STALE_SECONDS : catalog.maximumStaleSeconds();
-            boolean allowStale = catalog != null && Boolean.TRUE.equals(catalog.allowStale());
+            RahuConfig.CatalogConfig catalog = c.catalog() == null
+                ? RahuConfig.CatalogConfig.defaults() : c.catalog();
+            int ttl = catalog.ttlSeconds();
+            int maxStale = catalog.staleSeconds();
+            boolean allowStale = catalog.staleAllowed();
 
             String poolName = c.routing() == null ? null : c.routing().pool();
             List<RahuConfig.PoolEntry> pool = poolName == null || c.pools() == null
