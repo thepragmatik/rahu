@@ -76,6 +76,15 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
             } else if (q instanceof NoulQuestion n) {
                 qn.put("type", "noul");
                 qn.put("instructions", "Answer yes or no.");
+            } else if (q instanceof ScoreQuestion s) {
+                // The legend travels with the question: without it the model has no
+                // scale to place a level on, and the level would not be comparable.
+                qn.put("type", "score");
+                qn.put("instructions",
+                    "Rate how well the candidate satisfies the request using the legend, "
+                        + "most irrelevant first.");
+                var legend = qn.putArray("legend");
+                s.legend().forEach(legend::add);
             }
         }
 
@@ -196,8 +205,43 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
                 results.put(id, new DecisionResult.ValidNoul(id, noul.asDouble() >= 0.5,
                     Optional.of(noul.asDouble())));
             }
+            if (q instanceof ScoreQuestion s) {
+                results.put(id, parseScore(id, answer, s));
+            }
         }
         return results;
+    }
+
+    /**
+     * Parses a score answer into a typed ValidScore. Every rejection here is a silent
+     * quality trap if it were accepted: a level past the end of the legend sorts FIRST
+     * and looks like the strongest possible match, so an out-of-range or non-integral
+     * level degrades to a typed Failure instead. The legend echoed back must be the one
+     * the question carried — a server that answered against a different scale would
+     * make levels incomparable across candidates, which is the whole premise of a rerank.
+     */
+    private DecisionResult parseScore(String id, JsonNode answer, ScoreQuestion question) {
+        String type = answer.path("type").asText("");
+        if (!"score".equals(type)) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "answer type for " + id + " is not score");
+        }
+        JsonNode level = answer.path("level");
+        if (!level.isIntegralNumber()) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "score level for " + id + " is not an integer");
+        }
+        int value = level.asInt();
+        if (value < 0 || value >= question.legend().size()) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "score level " + value + " for " + id + " is outside the legend");
+        }
+        JsonNode echoed = answer.path("legend");
+        if (echoed.isArray() && echoed.size() != question.legend().size()) {
+            return new DecisionResult.Failure(DecisionResult.FailureKind.PROTOCOL_ERROR,
+                "score legend for " + id + " does not match the question legend");
+        }
+        return new DecisionResult.ValidScore(id, value, question.legend());
     }
 
     private DecisionResult parseChoice(String id, JsonNode answer, ChoiceQuestion c) {
