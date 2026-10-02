@@ -1,0 +1,31 @@
+{
+  "model": "demo-decision",
+  "state": {
+    "operation": "repository-analysis",
+    "request": "Explain the four planned Rahu modules",
+    "contextPressure": 0.85
+  },
+  "questions": {
+    "route": {
+      "type": "choice",
+      "instructions": "Choose a permitted candidate for repository analysis.",
+      "criteria": {
+        "fast@low": "Permitted analysis candidate with read-only tool support and low reasoning",
+        "quality@medium": "Permitted analysis candidate with read-only tool support and medium reasoning"
+      }
+    },
+    "read_relevant": {
+      "type": "noul",
+      "instructions": "Is reading a repository file relevant to this request?"
+    },
+    "compaction": {
+      "type": "choice",
+      "instructions": "Choose the summary detail policy for completed earlier context.",
+      "criteria": {
+        "defer": "Do not compact yet",
+        "concise": "Short summary preserving accepted facts and unresolved questions",
+        "detailed": "Longer bounded summary when useful facts need more space"
+      }
+    }
+  }
+}

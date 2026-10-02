@@ -1,0 +1,12 @@
+{
+  "model": "demo-decision",
+  "answers": {
+    "route": {
+      "type": "choice",
+      "choice": "outside-pool@high",
+      "probabilities": {"outside-pool@high": 1.0},
+      "confidence": 1.0
+    }
+  },
+  "usage": {"input_tokens": 240, "output_tokens": 80}
+}
