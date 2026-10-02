@@ -48,4 +48,18 @@ public final class DecisionQuestions {
     public static DecisionEngine.ChoiceQuestion route(Map<String, String> candidateCriteria) {
         return new DecisionEngine.ChoiceQuestion("route", candidateCriteria);
     }
+
+    /**
+     * INJECTION_RISK: one Boolean per untrusted observation — does this text try to
+     * issue instructions to the model reading it? Asked per observation, so the
+     * observation is the state request and the id names the observation.
+     */
+    public static DecisionEngine.NoulQuestion injectionRisk(String observationId) {
+        return new DecisionEngine.NoulQuestion(injectionQuestionId(observationId));
+    }
+
+    /** The wire id of an injection question; shared by the builder and its caller. */
+    public static String injectionQuestionId(String observationId) {
+        return "injection:" + observationId;
+    }
 }
