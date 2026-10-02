@@ -2,19 +2,37 @@
 
 Date: 2026-10-03. Repo HEAD at time of writing: `57fdc6b`.
 
+## Which jdtls (corrected 2026-10-03)
+
+Two builds exist on this host and they are **not** the same. Binding to the
+Homebrew one would silently run an older compiler on a Java 27 project.
+
+| | Homebrew 1.61.0 | **Snapshot (the one to use)** |
+|---|---|---|
+| path | `/opt/homebrew/Cellar/jdtls/1.61.0/libexec/plugins` | `~/.hermes/profiles/uplift/lsp/jdtls-snapshot/plugins` |
+| LTK refactoring | `3.16.0.v20260702-0744` | **`3.16.100.v20260923-1850`** |
+| batch compiler | `3.46.100.v20260826-1225` | **`3.46.200.v20260930-0211`** |
+| plugin count | 114 | 114 |
+
+The snapshot is roughly seven weeks newer and is the build Hermes itself is
+configured to use (`lsp.servers.jdtls.command` in the uplift profile's
+`config.yaml`). It is pinned because milestone jdtls releases lag on Java 27.
+
+`LspSession.resolveBinary()` therefore resolves, in order: the `RAHU_JDTLS`
+environment variable, the snapshot path, then `jdtls` on PATH. **Never a
+hardcoded Homebrew path.**
+
 ## Server capability (verified 2026-10-03)
 
-- jdtls **1.61.0**, installed at `/opt/homebrew/Cellar/jdtls/1.61.0/libexec/plugins`.
-- `ls` of that plugin directory: **114 plugins**. Relevant ones present:
-  - `org.eclipse.ltk.core.refactoring_3.16.0.v20260702-0744.jar` — the LTK
+- Snapshot jdtls ships **114 plugins**, including:
+  - `org.eclipse.ltk.core.refactoring_3.16.100.v20260923-1850.jar` — the LTK
     refactoring engine (rename, extract, inline, move).
-  - `org.eclipse.jdt.core.compiler.batch_3.46.100.v20260826-1225.jar` — the batch
+  - `org.eclipse.jdt.core.compiler.batch_3.46.200.v20260930-0211.jar` — the batch
     compiler.
-  - `org.eclipse.search.core_3.16.700.v20260501.jar` — search core.
+  - `org.eclipse.search.core_3.16.700.v20260505-0615.jar` — search core.
 - Conclusion: **the server can rename, extract, inline, move, and report
-  diagnostics.** There is no capability gap in the server. This is the snapshot
-  build taken specifically because milestone jdtls releases lag on Java 27, and it
-  matches this project's `maven.compiler.release=27`. Do not downgrade it.
+  diagnostics.** There is no capability gap in the server. The gap is that no
+  client in this repo drives it.
 
 ## Why there is no CLI
 
