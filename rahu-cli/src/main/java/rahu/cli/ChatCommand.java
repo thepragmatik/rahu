@@ -96,6 +96,29 @@ public final class ChatCommand implements Callable<Integer> {
         return 0;
     }
 
+    /**
+     * The registry for a live turn: the three read-only workspace tools, narrowed to
+     * the operator's {@code tools.enabled} list.
+     *
+     * <p>Audit finding F-4. {@code tools.enabled} and {@code tools.exclusions} were
+     * both parsed into {@link RahuConfig.ToolsConfig} and then never read, so an
+     * operator who disabled a tool still got it advertised to the model. A config key
+     * that is accepted and ignored is a documented capability that is unreachable -
+     * the same shape as the unreachable {@code ValidScore}.
+     *
+     * <p>Package-visible so the wiring is directly testable; wiring built inside a
+     * {@code runLive} body is not.
+     */
+    static rahu.core.tools.ToolRegistry workspaceRegistry(RahuConfig cfg,
+        rahu.core.tools.PathBoundary boundary) {
+        var all = rahu.core.tools.ToolRegistry.withWorkspace(boundary);
+        var enabled = cfg.tools().enabled();
+        if (enabled == null || enabled.isEmpty()) {
+            return all;
+        }
+        return all.restrictedTo(new java.util.LinkedHashSet<>(enabled));
+    }
+
     // ------------------------------------------------------------------- live
 
     private Integer runLive(RahuConfig cfg) {
@@ -141,8 +164,8 @@ public final class ChatCommand implements Callable<Integer> {
         var session = newSession(cfg, "live");
 
         var boundary = new rahu.core.tools.PathBoundary(
-            java.nio.file.Path.of(cfg.tools().root()));
-        var registry = rahu.core.tools.ToolRegistry.withWorkspace(boundary);
+            java.nio.file.Path.of(cfg.tools().root()), cfg.tools().exclusions());
+        var registry = workspaceRegistry(cfg, boundary);
         var loop = new rahu.cli.live.ToolLoop(registry, boundary, provider,
             new rahu.core.tools.ToolCallLog(), new rahu.core.privacy.PrivacyGate(),
             provenance(cfg),

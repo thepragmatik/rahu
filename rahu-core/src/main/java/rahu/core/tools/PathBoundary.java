@@ -46,6 +46,32 @@ public final class PathBoundary {
         this(root, DEFAULT_EXCLUDED_NAMES, DEFAULT_EXCLUDED_SUFFIXES, DEFAULT_EXCLUDED_DIRS);
     }
 
+    /**
+     * A boundary with operator-supplied exclusions ADDED to the credential-like name
+     * defaults. {@code tools.exclusions} from the config lands here.
+     *
+     * <p>Operator names are matched case-insensitively alongside the defaults, because
+     * {@code checkExclusions} lowercases the segment for name matching and a
+     * case-sensitive exclusion list is a trap on a case-preserving filesystem.
+     */
+    public PathBoundary(Path root, List<String> operatorExclusions) {
+        this(root, mergeNames(DEFAULT_EXCLUDED_NAMES, operatorExclusions),
+            DEFAULT_EXCLUDED_SUFFIXES, DEFAULT_EXCLUDED_DIRS);
+    }
+
+    private static List<String> mergeNames(List<String> defaults, List<String> extra) {
+        if (extra == null || extra.isEmpty()) {
+            return defaults;
+        }
+        var merged = new java.util.LinkedHashSet<String>(defaults);
+        for (String name : extra) {
+            if (name != null && !name.isBlank()) {
+                merged.add(name.toLowerCase(Locale.ROOT));
+            }
+        }
+        return List.copyOf(merged);
+    }
+
     public PathBoundary(Path root, List<String> excludedNames, List<String> excludedSuffixes,
         List<String> excludedDirs) {
         Objects.requireNonNull(root, "root");
@@ -102,7 +128,10 @@ public final class PathBoundary {
             if (excludedNames.contains(lower)) {
                 throw new BoundaryViolation("excluded path component (credential-like name)");
             }
-            if (excludedDirs.contains(name)) {
+            // Directory exclusions match case-insensitively: a case-sensitive list is
+            // a bypass on any filesystem that preserves case, so .GIT or Node_Modules
+            // would read where .git and node_modules would not (audit F-5).
+            if (excludedDirs.contains(lower)) {
                 throw new BoundaryViolation("excluded directory component (VCS/build output)");
             }
             for (String suffix : excludedSuffixes) {
