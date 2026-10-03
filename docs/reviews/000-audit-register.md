@@ -81,7 +81,7 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | ID | Sev | Finding | Why deferred |
 |---|---|---|---|
 | F-6 | LOW | Two sources of truth for `routing.confidenceFloor` (`ConfigLoader` 0.65, `ActiveRouter` 0.0). Unreachable today; a trap for a hand-built config. | Choosing the authoritative number is an operator decision. |
-| F-7 | MED | `Question` is not `sealed`. A new question type compiles unregistered and fails at `questionId()` — loud, but late. | Breaking change to a port with one implementation and no second implementor. |
+| ~~F-7~~ | ~~MED~~ | **FIXED** — `Question` **is** `sealed` (`DecisionEngine.java:116`, `permits ChoiceQuestion, NoulQuestion, ScoreQuestion`). This row was stale for as long as F-9 and F-11 and claimed otherwise; found only by re-reading the table against source (AUDIT-r). | — |
 | F-8 | MED | All transport failures collapse to `TIMEOUT`. A read timeout (ambiguous) is indistinguishable from a connect failure (definite). The ledger handles the ambiguity correctly via `markUncertain`, so cost is sound and only the diagnostic is coarse. | Would need a new `FailureKind`. |
 | ~~F-9~~ | ~~MED~~ | **FIXED** (AUDIT-p, `0e130e9`) — `tools.resultBytes` now bounds read, list and search, and non-positive caps are refused at load. Was listed here while already fixed. | — |
 | ~~F-11~~ | ~~HIGH~~ | **FIXED** (AUDIT-e) — `RouteResolver` reads it via `confidenceOf(c, in.confidenceField())`. Was listed here while already fixed. | — |
@@ -2205,3 +2205,124 @@ must carry it), notes collapsed to one string, and `answered` lying in either di
 - **C-1** cost rounding to a settled zero, **C-3** `estimateTokens` clamping (which also
   caps `pressure` at 1.0 — noted here because this increment touches that value).
 - **C-2** is now FIXED. F-9 and F-11 are now FIXED.
+
+
+---
+
+## AUDIT-2026-10-03-r — C-3: the token estimate was a clamped measurement
+
+Raised in increment q's notes as a curiosity ("`estimateTokens` clamps, which also caps
+`pressure` at 1.0"). It was not a curiosity. It was the same shape as q: **a real signal
+reported as a comfortable one, at a point where the system is deciding whether to compact.**
+
+### The clamp
+
+`PromptAssembler.estimateTokens` returned `Math.min(tokens, allowance)`. Every input over
+budget therefore reported *exactly* the allowance. Consequences, none of them visible in
+the code that used the value:
+
+- **`LiveTurnDriver`'s `Math.min(1.0, estimated / allowance)` was unreachable, not
+  defensive.** The numerator could never exceed the denominator, so pressure could not
+  exceed 1.0 *in principle*. A clamp written to look like a safety bound was doing nothing.
+- **A context 40x over budget and a context exactly at budget produced the same
+  pressure**, so the same trace, the same operator line, and the same trigger input.
+- **`CompactionPlanner` passed `Integer.MAX_VALUE`** purely to escape the clamp for its
+  own fit check. The real number was reachable only by asking for a nonsense allowance —
+  the clearest admission that the API was wrong.
+
+### The fix, and why the bound moved rather than disappeared
+
+`estimateTokens` no longer takes an allowance: a measurement must not change because an
+unrelated config value changed. The [0,1] bound did not vanish — it **moved to the port
+that states it**. `DecisionEngine.State` rejects `contextPressure` outside [0,1], so:
+
+- `ContextPlan.pressure()` — the honest ratio, may exceed 1.0.
+- `ContextPlan.boundedPressure()` — saturates at 1.0, used only for the port.
+
+`ContextPlan` also gained a non-positive-allowance guard, because `pressure()` divides by
+that field and `assemble()`'s own guard does not protect a direct construction of a
+**public record**.
+
+### A second defect the mutation battery found, which reading had not
+
+**`CompactionPolicyDecider` hardcoded `0.0` into the compaction dispatch.** This consult
+runs *only* when the caller measured `pressure >= 0.80`, and it told the decision port
+`contextPressure = 0.0` while its own request view said *"estimated context pressure is
+above the 80% trigger"*. The engine was informed the context was empty at the moment it
+was asked to compact it — and the typed field is what a model weights most, so any
+reasoning over it argued for `defer`.
+
+Its javadoc also still claimed a transport failure compacts nothing, which stopped being
+true in increment q. Corrected.
+
+Neither was found by reading the code. Both were found by mutating the value and asking
+what the port received.
+
+### 14 mutations, all caught
+
+| Mutation | Result |
+|---|---|
+| estimator re-clamped to the allowance (the original defect) | CAUGHT |
+| estimator returns a constant | CAUGHT |
+| estimator under-reports 3x | CAUGHT |
+| framing overhead dropped | CAUGHT |
+| `pressure()` clamps to 1.0 (symptom, not cause) | CAUGHT |
+| `boundedPressure()` stops saturating | CAUGHT |
+| `ContextPlan` allowance guard removed | CAUGHT |
+| driver clamps pressure before the trigger | CAUGHT |
+| driver hands UNBOUNDED pressure to the port | CAUGHT |
+| compaction consult not given the real pressure | CAUGHT |
+| compaction consult hardcodes 0.0 (**the new find**) | CAUGHT |
+| compaction consult drops the clamp | CAUGHT |
+| planner fit check inverted | CAUGHT |
+| planner estimate scaled | CAUGHT |
+
+Then two more that only the wiring test could see:
+
+| Mutation | Result |
+|---|---|
+| compaction consult given `0.5` instead of the real pressure | CAUGHT |
+| compaction consult given `0.0` at the call site | CAUGHT |
+
+### Three survivors I chased instead of writing off
+
+1. **"Allowance guard removed" survived.** Not a weak test — `assemble()` has its own
+   guard, so the test proved nothing about the record. Added
+   `contextPlanRefusesNonPositiveAllowanceDirectly`, which constructs the record. Now caught.
+
+2. **"Driver hands UNBOUNDED pressure to the port" survived twice.** My first fix asserted
+   `ProfileDecider` receives a legal value — but it passed a literal `1.0`, which is in
+   range *by construction*, so it could never fail. The defect was in the **driver's call**,
+   and the driver's `catch (RuntimeException)` turned the port's rejection into
+   `profile: unavailable`, silently disabling the profile decision on exactly the
+   over-budget turns where it matters. Rewritten to drive the real driver with a recording
+   engine.
+
+3. **"Compaction consult given 0.0 at the call site" survived.** My compaction test proved
+   the dispatch was *in range*; it did not prove it was *the right number*. In-range-but-
+   wrong is precisely what a bounds check cannot see. The follow-up mutation — `0.5`
+   instead of the real value — is what proves the new test checks the value and not the
+   bound.
+
+Worth generalising: **a bounds assertion and a value assertion are different tests.** The
+first mutation battery here was 13/14 and would have shipped a driver that reported a
+flat `0.00` to the compaction engine.
+
+### A limit on the packaged-binary proof, stated rather than glossed
+
+I tried to demonstrate the trigger through `rahu-cli.jar`. It cannot be done. Offline mode
+never reaches the trigger, and live mode requires a real generation adapter plus a key
+(`live wiring failed: unknown generation adapter "fake"; expected openrouter`). So the
+`pressure` behaviour is proven at the **driver level with the real `LiveTurnDriver`** and
+not through the shipped binary. Recorded so a later reader does not assume binary coverage
+that does not exist.
+
+### 488 tests green (172 core / 14 openrouter / 30 systemone / 272 cli)
+
+### Also closed this increment
+
+- `examples/offline.json` verified loadable; the packaged binary still runs offline turns
+  cleanly end to end.
+- **F-7 is corrected in the register**: the row claimed `Question` is unsealed; it has been
+  `sealed` since `DecisionEngine.java:116`. Stale for as long as F-9 and F-11 were, and
+  found only because the whole table was re-read against source.

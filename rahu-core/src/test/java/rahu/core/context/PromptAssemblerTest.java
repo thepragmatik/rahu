@@ -81,4 +81,79 @@ class PromptAssemblerTest {
         assertTrue(plan.estimatedTokens() > 0, "conservative estimate present");
         assertTrue(plan.estimatedTokens() < 8000, "estimate respects allowance bound");
     }
+
+    @Test
+    @DisplayName("An over-budget prompt reports an estimate ABOVE its allowance")
+    void overBudgetEstimateIsNotClampedToTheAllowance() {
+        // AUDIT-2026-10-03-r. The estimate used to be Math.min(tokens, allowance),
+        // so every overflowing input reported exactly the allowance. That made a
+        // context three times over budget indistinguishable from a comfortable fit —
+        // same estimate, same pressure, same operator line, same trace.
+        String huge = "x".repeat(24 * 1024);
+        var plan = new PromptAssembler().assemble(List.of(), List.of(),
+            ChatMessage.user(huge), 800);
+
+        assertTrue(plan.estimatedTokens() > plan.contextAllowanceTokens(),
+            "the estimate must exceed the allowance for an over-budget prompt; it "
+                + "reported " + plan.estimatedTokens() + " against an allowance of "
+                + plan.contextAllowanceTokens() + ", i.e. the measurement is clamped "
+                + "and a real overrun reads as a full context");
+        assertTrue(plan.pressure() > 1.0,
+            "pressure must exceed 1.0 when the prompt is over budget; it reported "
+                + plan.pressure());
+        assertEquals(1.0, plan.boundedPressure(),
+            "the port-facing value still saturates at 1.0, because "
+                + "DecisionEngine.State requires contextPressure in [0,1]");
+    }
+
+    @Test
+    @DisplayName("The same messages estimate identically under different allowances")
+    void estimateDoesNotDependOnTheAllowance() {
+        // The defect in one assertion: a MEASUREMENT must not change because an
+        // unrelated configuration value changed. Two allowances, one number.
+        var messages = List.of(ChatMessage.user("estimate me the same way"));
+        var tight = new PromptAssembler().assemble(List.of(), List.of(),
+            messages.get(0), 200);
+        var loose = new PromptAssembler().assemble(List.of(), List.of(),
+            messages.get(0), 100_000);
+
+        assertEquals(tight.estimatedTokens(), loose.estimatedTokens(),
+            "the token estimate is a measurement of the messages; it must not depend "
+                + "on the allowance (" + tight.estimatedTokens() + " vs "
+                + loose.estimatedTokens() + ")");
+        assertTrue(loose.pressure() < 1.0,
+            "the same prompt comfortably fits a 100k allowance");
+        assertTrue(tight.pressure() > loose.pressure(),
+            "a tighter allowance must report higher pressure for the same prompt");
+    }
+
+    @Test
+    @DisplayName("A non-positive allowance is refused, not divided by")
+    void nonPositiveAllowanceRefused() {
+        // pressure() divides by contextAllowanceTokens. Before this guard the
+        // divide produced Infinity or NaN, and Infinity compared >= 0.80 - so a
+        // misconfigured zero allowance would trip the compaction trigger with a
+        // pressure no operator could interpret.
+        var ex = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> new PromptAssembler().assemble(List.of(), List.of(),
+                ChatMessage.user("q"), 0));
+        assertTrue(ex.getMessage().contains("positive"), "message names the bound");
+    }
+
+    @Test
+    @DisplayName("ContextPlan itself refuses a non-positive allowance")
+    void contextPlanRefusesNonPositiveAllowanceDirectly() {
+        // assemble() has its own guard, so the test above proves nothing about the
+        // record's invariant — removing the ContextPlan guard left the suite green,
+        // which is exactly how a dead guard stays in the code looking load-bearing.
+        // ContextPlan is a PUBLIC record, so a caller can build one directly, and
+        // pressure() divides by this field.
+        var ex = org.junit.jupiter.api.Assertions.assertThrows(
+            IllegalArgumentException.class,
+            () -> new ContextPlan(List.of(), List.of(), 1, 10, 0));
+        assertTrue(ex.getMessage().contains("positive"), "message names the bound");
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+            () -> new ContextPlan(List.of(), List.of(), 1, 10, -5));
+    }
 }

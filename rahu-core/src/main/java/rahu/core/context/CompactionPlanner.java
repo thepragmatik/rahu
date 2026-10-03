@@ -110,8 +110,12 @@ public final class CompactionPlanner {
         // history plus the pending request) — the same content the 80% pressure
         // measurement contains. Estimating history alone would let a request
         // that cannot fit be "honoured" as defer.
+        // No allowance argument: the estimate is a measurement and is not clamped
+        // to one (AUDIT-2026-10-03-r). This call used to pass Integer.MAX_VALUE
+        // purely to escape a clamp that made a real overrun indistinguishable from
+        // a comfortable fit.
         int estimated = PromptAssembler.estimateTokens(
-            history.isEmpty() ? List.of(ChatMessage.user("")) : history, Integer.MAX_VALUE);
+            history.isEmpty() ? List.of(ChatMessage.user("")) : history);
         boolean cannotFit = estimated >= contextAllowanceTokens;
 
         Policy effective = (requested == Policy.DEFER && cannotFit) ? Policy.CONCISE : requested;

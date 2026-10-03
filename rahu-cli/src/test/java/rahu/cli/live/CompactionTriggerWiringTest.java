@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import java.io.ByteArrayInputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.ArrayList;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -205,6 +206,10 @@ class CompactionTriggerWiringTest {
      * pressure trigger fires, and a decision engine that throws.
      */
     private Turn driveWithUnreachableEngine(Path traceDirectory) throws Exception {
+        return driveWithUnreachableEngine(traceDirectory, PROMPT);
+    }
+
+    private Turn driveWithUnreachableEngine(Path traceDirectory, String request) throws Exception {
         // A 40-token allowance: the estimator is bytes/3 + messages, so this prompt
         // alone exceeds 32 tokens and the 80% trigger fires on the FIRST turn, with
         // no session history to build up. Copied from RunTraceWiringTest's config
@@ -258,12 +263,162 @@ class CompactionTriggerWiringTest {
             }
         };
         StringWriter errBuf = new StringWriter();
-        var in = new ByteArrayInputStream((PROMPT + "\n").getBytes(StandardCharsets.UTF_8));
+        var in = new ByteArrayInputStream((request + "\n").getBytes(StandardCharsets.UTF_8));
         java.io.InputStream original = System.in;
         int exit;
         try {
             System.setIn(in);
             exit = new LiveTurnDriver(cfg, provider, dead, router, session,
+                new Provenance.ApprovedNonSensitive("test"), toolLoop,
+                line -> null, new PrintWriter(new StringWriter()),
+                new PrintWriter(errBuf)).run();
+        } finally {
+            System.setIn(original);
+        }
+        return new Turn(exit, errBuf.toString());
+    }
+
+    /**
+     * Answers whatever it is asked and remembers the state it was handed, so a test
+     * can assert what the driver actually passed across the port.
+     */
+    private static final class RecordingEngine implements DecisionEngine {
+        // EVERY state, not just the last: one turn makes two dispatches (profile,
+        // then the compaction consult), and keeping only the last would assert on
+        // whichever happened to be second.
+        final List<State> states = new ArrayList<>();
+
+        @Override
+        public Map<String, DecisionResult> askAll(State state, List<Question> questions) {
+            states.add(state);
+            var answers = new java.util.LinkedHashMap<String, DecisionResult>();
+            for (Question q : questions) {
+                // questionId, not q.id() - the sealed interface has no accessor of
+                // its own; the static helper dispatches over the permitted types.
+                String id = DecisionEngine.questionId(q);
+                answers.put(id, new DecisionResult.ValidChoice(
+                    id, "defer", java.util.Map.of("defer", 0.8),
+                    java.util.Optional.of(0.8), "recorded"));
+            }
+            return answers;
+        }
+    }
+
+    @Test
+    @DisplayName("The compaction dispatch carries the turn's real pressure, not 0.0")
+    void compactionDispatchCarriesRealPressure() throws Exception {
+        // The previous test proved the COMPACTION_POLICY dispatch is IN RANGE. This
+        // proves it is the right number: a mutation that had the driver pass 0.0
+        // survived, because in-range-but-wrong is exactly the failure a bounds check
+        // cannot see. The trigger is only reached at pressure >= 0.80, so a compaction
+        // dispatch reporting 0.00 tells the engine the context is empty at the moment
+        // it is asked to compact it.
+        var recorder = new RecordingEngine();
+        var turn = driveOverBudget(recorder, root.resolve("traces-compaction-pressure"),
+            "explain every file in this repository in exhaustive detail, at length");
+
+        var compaction = recorder.states.stream()
+            .filter(s -> s.operation().equals("COMPACTION_POLICY")).findFirst();
+        assertTrue(compaction.isPresent(),
+            "an over-budget turn must consult for a compaction policy; saw "
+                + recorder.states.stream().map(s -> s.operation()).toList()
+                + "\nstderr was:\n" + turn.err());
+        assertEquals(1.0, compaction.get().contextPressure(),
+            "the compaction dispatch must carry the saturated real pressure; it "
+                + "received " + compaction.get().contextPressure() + ", which reports "
+                + "an empty context to the engine being asked to compact it");
+    }
+
+    @Test
+    @DisplayName("An over-budget turn reaches the decision port with pressure in [0,1]")
+    void overBudgetTurnHandsThePortABoundedPressure() throws Exception {
+        // The clamp belongs to the PORT, not to the measurement (AUDIT-2026-10-03-r).
+        // DecisionEngine.State rejects contextPressure outside [0,1], and the driver
+        // wraps the profile consult in a catch-all, so handing it the raw pressure
+        // does not crash the turn - it prints "profile: unavailable" and quietly
+        // disables the profile decision on precisely the over-budget turns where it
+        // matters. Nothing noticed until a mutation asked what the port received.
+        var recorder = new RecordingEngine();
+        var turn = driveOverBudget(recorder,
+            root.resolve("traces-port"),
+            "explain every file in this repository in exhaustive detail, at length");
+
+        assertTrue(turn.err().contains("profile:"),
+            "the profile decision must survive an over-budget turn; stderr was:\n"
+                + turn.err());
+        assertFalse(turn.err().contains("profile: unavailable"),
+            "the port rejected the pressure the driver handed it, and the catch-all "
+                + "turned that into a silently degraded turn. stderr was:\n"
+                + turn.err());
+        assertFalse(recorder.states.isEmpty(), "the engine was consulted at all");
+        for (DecisionEngine.State state : recorder.states) {
+            double handed = state.contextPressure();
+            assertTrue(handed >= 0.0 && handed <= 1.0,
+                "a dispatch for operation " + state.operation() + " received "
+                    + "contextPressure=" + handed + ", outside the [0,1] "
+                    + "DecisionEngine.State requires");
+        }
+        // Select by operation, not by index: one turn makes three dispatches
+        // (route, profile, compaction) and the order is not what is under test.
+        var profile = recorder.states.stream()
+            .filter(s -> s.operation().equals("TASK_CLASSIFICATION")).findFirst();
+        assertTrue(profile.isPresent(),
+            "the profile dispatch must happen; saw " + recorder.states.stream()
+                .map(s -> s.operation()).toList());
+        assertEquals(1.0, profile.get().contextPressure(),
+            "an over-budget turn saturates at 1.0 for the port, while the operator "
+                + "line keeps the honest ratio; the profile dispatch received "
+                + profile.get().contextPressure());
+    }
+
+    private Turn driveOverBudget(DecisionEngine engine, Path traceDirectory, String request)
+        throws Exception {
+        String json = """
+            {
+              "schemaVersion": 1,
+              "mode": "live",
+              "decision": {"adapter": "fake", "model": "demo-decision",
+                "baseUrl": "http://127.0.0.1:8000"},
+              "generation": {"adapter": "fake", "baseUrl": "http://127.0.0.1:8000"},
+              "agent": {"maxCostUsd": "1.00"},
+              "routing": {"mode": "shadow", "pool": "demo",
+                "baseline": "fast@low", "fallback": "fast@low",
+                "confidenceField": "chosen_probability", "confidenceFloor": 0.65},
+              "pools": {"demo": {"models": [
+                {"alias": "fast", "id": "demo-fast", "reasoning": ["low", "medium"]}
+              ]}},
+              "context": {"instructionFiles": [], "maxPromptTokens": 40},
+              "tools": {"root": ".", "enabled": []},
+              "trace": {"directory": %s, "capture": "metadata", "onFailure": "stop"},
+              "orchestration": {"mode": "single"},
+              "session": {"mode": "in-process", "maxTurns": 20, "maxCostUsd": "10.00"},
+              "privacy": {"mode": "strict", "onUnknown": "block",
+                "inputClassification": "approved-nonsensitive"}
+            }
+            """.formatted(new com.fasterxml.jackson.databind.ObjectMapper()
+                .createObjectNode().put("d", traceDirectory.toString()).get("d").toString());
+        Path configPath = root.resolve("cfg-port-" + traceDirectory.getFileName() + ".json");
+        Files.writeString(configPath, json);
+        var cfg = new rahu.cli.config.ConfigLoader().load(configPath);
+
+        var ref = new ModelRef("demo-fast");
+        var provider = new MeteredProvider();
+        var boundary = new PathBoundary(root);
+        var toolLoop = new ToolLoop(ToolRegistry.withWorkspace(boundary), boundary, provider,
+            new ToolCallLog(), new PrivacyGate(),
+            new Provenance.ApprovedNonSensitive("test"), 4,
+            new InjectionGate(new SilentEngine(), InjectionGate.Mode.OFF, 0.10),
+            new SearchReranker(new SilentEngine(), SearchReranker.Mode.OFF, 20));
+        var session = new SessionState("compaction-port", cfg.session().maxTurns(),
+            new MoneyAmount(cfg.session().maxCostUsd(), CurrencyUnit.USD));
+
+        StringWriter errBuf = new StringWriter();
+        java.io.InputStream original = System.in;
+        int exit;
+        try {
+            System.setIn(new ByteArrayInputStream((request + "\n").getBytes(StandardCharsets.UTF_8)));
+            exit = new LiveTurnDriver(cfg, provider, engine,
+                new ActiveRouter(cfg, Map.of(ref, profile("demo-fast"))), session,
                 new Provenance.ApprovedNonSensitive("test"), toolLoop,
                 line -> null, new PrintWriter(new StringWriter()),
                 new PrintWriter(errBuf)).run();
@@ -296,6 +451,32 @@ class CompactionTriggerWiringTest {
             "the defer note must not appear once the engine is unreachable");
         assertFalse(turn.err().contains("null"),
             "the compaction line must carry a real note, not a literal null:\n"
+                + turn.err());
+    }
+
+    @Test
+    @DisplayName("An over-budget context reports pressure ABOVE 1.0, not a flat 1.00")
+    void overBudgetPressureIsNotPinnedAtOne() throws Exception {
+        // AUDIT-2026-10-03-r. The estimator used to clamp its result to the
+        // allowance, so this run would report pressure=1.00 whether the context was
+        // 40 tokens over or 40x over, and the driver's own Math.min(1.0, ...) was
+        // unreachable rather than defensive. context.md:42 makes the allowance a
+        // stricter conversation bound, not a cap on what may be reported about it.
+        var traceDirectory = root.resolve("traces-over");
+        // A 40-token allowance against a harness prompt plus this long request:
+        // the honest ratio is several times over, so a clamped build prints 1.00.
+        var turn = driveWithUnreachableEngine(traceDirectory,
+            "explain every file in this repository in exhaustive detail, at length");
+
+        var pressure = java.util.regex.Pattern.compile("pressure=([0-9.]+)");
+        var matcher = pressure.matcher(turn.err());
+        assertTrue(matcher.find(),
+            "a pressured turn must report its pressure; stderr was:\n" + turn.err());
+        double reported = Double.parseDouble(matcher.group(1));
+        assertTrue(reported > 1.0,
+            "pressure was reported as " + reported + " for a context several times over "
+                + "its allowance. A pinned 1.00 reports an unbounded overrun as a full "
+                + "context, and hides how far over the context actually is. stderr was:\n"
                 + turn.err());
     }
 }

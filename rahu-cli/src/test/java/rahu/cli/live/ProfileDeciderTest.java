@@ -138,4 +138,25 @@ class ProfileDeciderTest {
         assertEquals(TaskClass.UNKNOWN, profile.taskClass());
         assertTrue(profile.degraded());
     }
+
+    @Test
+    @DisplayName("The decision port is handed pressure inside [0,1], whatever the caller measured")
+    void portReceivesBoundedPressure() {
+        // AUDIT-2026-10-03-r. The estimator was unclamped so a real overrun reports
+        // pressure above 1.0, which DecisionEngine.State REJECTS ("contextPressure in
+        // [0,1]"). The driver's try/catch swallowed that rejection into
+        // "profile: unavailable", so the mutation "hand the port the raw pressure"
+        // left the suite green while silently disabling the profile decision on
+        // exactly the over-budget turns where it matters most. The bound belongs to
+        // the port, so it is asserted here, at the port.
+        var engine = new FakeEngine(answers("coding", 0.9, Map.of()));
+        new ProfileDecider(engine, TOOLS).decide("a long request", 1.0);
+
+        assertTrue(engine.lastState != null, "the engine was consulted");
+        double handed = engine.lastState.contextPressure();
+        assertTrue(handed >= 0.0 && handed <= 1.0,
+            "DecisionEngine.State requires contextPressure in [0,1] and throws "
+                + "otherwise; it was handed " + handed + ", which the driver would "
+                + "have swallowed as \"profile: unavailable\"");
+    }
 }

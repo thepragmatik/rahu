@@ -292,8 +292,13 @@ public final class LiveTurnDriver {
                 //     documented conservative estimate over history + this request).
                 var plan = assembler.assemble(List.of(), session.history(),
                     ChatMessage.user(line), allowance);
-                double pressure = Math.min(1.0,
-                    plan.estimatedTokens() / (double) plan.contextAllowanceTokens());
+                // Unclamped: an input over budget must report pressure above 1.0,
+                // or a three-times-over context is indistinguishable from a full one.
+                // The clamp that used to live here was unreachable (the estimator
+                // already clamped), and the ratio handed to the decision port below
+                // is bounded at that port instead — DecisionEngine.State requires
+                // contextPressure in [0,1] and rejects anything else.
+                double pressure = plan.pressure();
 
                 // 2. Routing decision. The labels offered are the executable candidate
                 //    ids, so a decision the resolver can accept actually changes the
@@ -355,7 +360,8 @@ public final class LiveTurnDriver {
                 //     It must never block the baseline; any failure degrades closed.
                 TurnProfile profile = null;
                 try {
-                    profile = new ProfileDecider(decision, PERMITTED_TOOLS).decide(line, pressure);
+                    profile = new ProfileDecider(decision, PERMITTED_TOOLS)
+                        .decide(line, plan.boundedPressure());
                 } catch (RuntimeException e) {
                     err.println("profile: unavailable (" + e.getClass().getSimpleName() + ")");
                 }
@@ -377,7 +383,7 @@ public final class LiveTurnDriver {
                     var candidate = new java.util.ArrayList<>(session.history());
                     candidate.add(ChatMessage.user(line));
                     var consult = new CompactionPolicyDecider(decision)
-                        .consult(candidate, allowance);
+                        .consult(candidate, allowance, pressure);
                     err.println("compaction: policy=" + consult.policy().name().toLowerCase(Locale.ROOT)
                         + " pressure=" + String.format(Locale.ROOT, "%.2f", pressure)
                         + " — " + consult.safeNote());

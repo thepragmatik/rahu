@@ -66,7 +66,7 @@ class CompactionPolicyDeciderTest {
     @DisplayName("A valid 'detailed' answer reaches the planner and selects DETAILED")
     void detailedAnswerHonoured() {
         var engine = new FakeEngine(choice("detailed", 0.7));
-        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000);
+        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000, 0.90);
 
         assertEquals(CompactionPlanner.Policy.DETAILED, consult.policy());
         assertTrue(consult.answered());
@@ -80,7 +80,7 @@ class CompactionPolicyDeciderTest {
     void failedAnswerFailsClosed() {
         var engine = new FakeEngine(
             new DecisionResult.Failure(DecisionResult.FailureKind.TIMEOUT, "down"));
-        var consult = new CompactionPolicyDecider(engine).consult(history(10), 1_000_000);
+        var consult = new CompactionPolicyDecider(engine).consult(history(10), 1_000_000, 0.90);
 
         assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy());
         assertTrue(consult.answered(), "the engine answered; the answer was a failure");
@@ -95,7 +95,7 @@ class CompactionPolicyDeciderTest {
                 throw new IllegalStateException("consultation unreachable");
             }
         };
-        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000);
+        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000, 0.90);
 
         // CORRECTED (AUDIT-2026-10-03-q). This asserted DEFER, with the message
         // "without a consultation nothing is compacted". That is the defect, not the
@@ -127,7 +127,7 @@ class CompactionPolicyDeciderTest {
     @DisplayName("An explicit defer with a failing fit check is overridden to CONCISE")
     void deterministicOverrideFlowsThrough() {
         var engine = new FakeEngine(choice("defer", 0.9));
-        var consult = new CompactionPolicyDecider(engine).consult(history(30), 200);
+        var consult = new CompactionPolicyDecider(engine).consult(history(30), 200, 0.90);
 
         assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy(),
             "the fit check wins over an honoured defer");
@@ -144,7 +144,7 @@ class CompactionPolicyDeciderTest {
         // 800 chars + 8 framing bytes ≈ 270 estimated tokens > 220 allowance.
         var candidate = List.of(ChatMessage.user("x".repeat(800)));
 
-        var consult = new CompactionPolicyDecider(engine).consult(candidate, 220);
+        var consult = new CompactionPolicyDecider(engine).consult(candidate, 220, 0.90);
 
         assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy(),
             "the next request cannot fit; defer must not be honoured");
@@ -162,7 +162,7 @@ class CompactionPolicyDeciderTest {
         // misreports the fit is how the old defect reached an operator as a
         // confident sentence.
         var engine = new FakeEngine(choice("defer", 0.9));
-        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000);
+        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000, 0.90);
 
         assertEquals(CompactionPlanner.Policy.DEFER, consult.policy());
         assertEquals("defer: context fits; nothing compacted", consult.safeNote(),
@@ -181,7 +181,7 @@ class CompactionPolicyDeciderTest {
         var notes = new java.util.LinkedHashMap<String, String>();
         for (String label : new String[] {"defer", "concise", "detailed"}) {
             var consult = new CompactionPolicyDecider(new FakeEngine(choice(label, 0.9)))
-                .consult(history(10), 8000);
+                .consult(history(10), 8000, 0.90);
             assertNotNull(consult.safeNote(),
                 "policy " + label + " must carry a note; null means the operator "
                     + "sees a literal null where the explanation should be");
@@ -197,5 +197,61 @@ class CompactionPolicyDeciderTest {
                 && notes.get("detailed").contains("1024"),
             "the notes must carry the spec's output caps (context.md:36), because "
                 + "'concise' alone does not tell an operator what it costs: " + notes);
+    }
+
+    @Test
+    @DisplayName("The compaction consult hands the port the real pressure, not 0.0")
+    void compactionConsultReportsRealPressure() {
+        // AUDIT-2026-10-03-r. This consult runs ONLY when the caller measured
+        // pressure >= 0.80, and it used to hardcode 0.0 into the decision port's
+        // typed contextPressure field while the request view said "pressure is above
+        // the 80% trigger". The engine was told the context was empty at the moment
+        // it was asked to compact it, so anything reasoning over that field argued
+        // for defer. Found by a mutation test, not by reading.
+        var seen = new java.util.concurrent.atomic.AtomicReference<DecisionEngine.State>();
+        DecisionEngine recording = new DecisionEngine() {
+            @Override
+            public java.util.Map<String, DecisionResult> askAll(DecisionEngine.State state,
+                java.util.List<DecisionEngine.Question> questions) {
+                seen.set(state);
+                return java.util.Map.of("compaction", new DecisionResult.ValidChoice(
+                    "compaction", "concise", java.util.Map.of("concise", 0.9),
+                    java.util.Optional.of(0.9), "ok"));
+            }
+        };
+        var consult = new CompactionPolicyDecider(recording)
+            .consult(List.of(ChatMessage.user("a fairly long pending request")), 8000, 1.75);
+
+        assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy());
+        var state = seen.get();
+        org.junit.jupiter.api.Assertions.assertNotNull(state, "the engine was consulted");
+        assertEquals("COMPACTION_POLICY", state.operation());
+        assertEquals(1.0, state.contextPressure(),
+            "1.75x the allowance must reach the port saturated at 1.0, not as the 0.0 "
+                + "this used to hardcode; it received " + state.contextPressure());
+        org.junit.jupiter.api.Assertions.assertTrue(state.request().contains("above the 80%"),
+            "the request view still states the trigger");
+    }
+
+    @Test
+    @DisplayName("An out-of-range pressure is clamped at the port, not rejected")
+    void compactionConsultClampsOutOfRangePressure() {
+        // DecisionEngine.State throws on contextPressure outside [0,1]. A negative
+        // ratio cannot come from the driver, but clamping keeps the bound a property
+        // of this boundary rather than an accident of the caller.
+        var seen = new java.util.concurrent.atomic.AtomicReference<DecisionEngine.State>();
+        DecisionEngine recording = new DecisionEngine() {
+            @Override
+            public java.util.Map<String, DecisionResult> askAll(DecisionEngine.State state,
+                java.util.List<DecisionEngine.Question> questions) {
+                seen.set(state);
+                return java.util.Map.of("compaction", new DecisionResult.ValidChoice(
+                    "compaction", "concise", java.util.Map.of("concise", 0.9),
+                    java.util.Optional.of(0.9), "ok"));
+            }
+        };
+        new CompactionPolicyDecider(recording)
+            .consult(List.of(ChatMessage.user("q")), 8000, -3.0);
+        assertEquals(0.0, seen.get().contextPressure(), "negative clamps to 0.0");
     }
 }

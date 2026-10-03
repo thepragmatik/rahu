@@ -62,7 +62,7 @@ public final class PromptAssembler {
         messages.addAll(history);
         messages.add(currentRequest);
 
-        int estimate = estimateTokens(messages, contextAllowanceTokens);
+        int estimate = estimateTokens(messages);
         return new ContextPlan(messages, hashes, TEMPLATE_VERSION, estimate,
             contextAllowanceTokens);
     }
@@ -93,13 +93,30 @@ public final class PromptAssembler {
      * Documented conservative upper bound (runtime.md): ~4 bytes per token for
      * ASCII-leaning text, plus per-message framing overhead. Never presented
      * as an exact tokenizer count.
+     *
+     * <p>This is a MEASUREMENT, so it is never clamped to the allowance. It used
+     * to be {@code Math.min(tokens, allowance)}, which made the estimate report
+     * exactly the allowance for every overflowing input: a context three times
+     * over budget and a context exactly at budget produced the same number, and
+     * therefore the same pressure, and therefore the same trace and the same
+     * operator line. Two consequences followed. {@code LiveTurnDriver}'s
+     * {@code Math.min(1.0, estimated / allowance)} became unreachable rather than
+     * defensive, so pressure could never exceed 1.0 even in principle. And
+     * {@code CompactionPlanner} had to pass {@link Integer#MAX_VALUE} to escape the
+     * clamp for its own fit check, so the real number was reachable only by
+     * asking for a nonsense allowance.
+     *
+     * <p>The allowance belongs in the COMPARISON, not baked into the number.
+     * Clamping a measurement is how a real overrun gets reported as a comfortable
+     * fit. Callers that must hand a bounded ratio to the decision port clamp
+     * there, at the boundary that states the bound.
      */
-    static int estimateTokens(List<ChatMessage> messages, int allowance) {
-        int bytes = 0;
+    static int estimateTokens(List<ChatMessage> messages) {
+        long bytes = 0;
         for (ChatMessage m : messages) {
-            bytes += m.content().length() + 8; // role + framing overhead
+            bytes += m.content().length() + 8L; // role + framing overhead
         }
         long tokens = bytes / 3 + messages.size(); // conservative: 3 bytes/token
-        return (int) Math.min(tokens, allowance);
+        return (int) Math.min(tokens, Integer.MAX_VALUE);
     }
 }

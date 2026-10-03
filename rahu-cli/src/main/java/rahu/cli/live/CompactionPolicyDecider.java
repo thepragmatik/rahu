@@ -8,9 +8,14 @@ import rahu.systemone.DecisionEngine;
 /**
  * COMPACTION_POLICY consult (context.md): at the pressure trigger, System One
  * chooses defer/concise/detailed and the deterministic fit check keeps the
- * final say. A transport failure means no consultation happened — the planner
- * runs deterministic-only and nothing is compacted (context is never dropped
- * without a consult, because no summary is executed on this path).
+ * final say.
+ *
+ * <p>A transport failure means no ANSWER arrived, and the planner then fails
+ * closed to the conservative compact. An earlier version of this javadoc said
+ * the opposite — "nothing is compacted" — which was true when the planner
+ * defaulted a missing answer to DEFER and false once it failed closed
+ * (AUDIT-2026-10-03-q). systemone.md:40 requires the concise default, and this
+ * class executes no summary, so no context is ever dropped here regardless.
  */
 public final class CompactionPolicyDecider {
 
@@ -31,12 +36,21 @@ public final class CompactionPolicyDecider {
      * effective policy. Never throws and never drops context: any failure
      * degrades to the deterministic planner run with no decision attached.
      */
-    public Consult consult(List<ChatMessage> nextRequestMessages, int contextAllowanceTokens) {
+    public Consult consult(List<ChatMessage> nextRequestMessages, int contextAllowanceTokens,
+        double contextPressure) {
         java.util.Optional<rahu.core.decision.DecisionResult> answer = java.util.Optional.empty();
         String note = null;
         try {
+            // The REAL pressure, not 0.0. This consult only runs when the caller
+            // measured pressure >= 0.80, yet it handed the decision port 0.0 while
+            // the request view told the model "pressure is above the 80% trigger".
+            // The typed field is what a model weights most, so the engine was being
+            // told the context was empty at the moment it was asked to compact it,
+            // and any reasoning conditioned on that field argued for defer. Found
+            // by a mutation test (AUDIT-2026-10-03-r), not by reading.
             var state = new DecisionEngine.State("COMPACTION_POLICY",
-                requestView(nextRequestMessages), 0.0);
+                requestView(nextRequestMessages),
+                Math.min(1.0, Math.max(0.0, contextPressure)));
             var answers = engine.askAll(state,
                 List.of(rahu.systemone.DecisionQuestions.compactionPolicy()));
             answer = java.util.Optional.ofNullable(answers.get("compaction"));
