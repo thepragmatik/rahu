@@ -1353,7 +1353,108 @@ the CLI. Worth its own increment.
 
 ---
 
-## AUDIT-2026-10-03-k — the offline path never builds a result, so it reports nothing
+## AUDIT-2026-10-03-k — FIXED: the offline path reported constants, not observations
+
+One root cause, three shipped defects. `runOffline` ended with `return code;` — a
+bare `int` — while the live path builds a `TurnOutcome` and hands it to
+`footer()`/`renderJson()`. A path that returns an int cannot report anything, so
+every offline field was hand-written.
+
+### Defect 1: the footer was never printed
+
+`footer(outcome)` was called on the live path only. Offline printed the answer and
+nothing about routing, cost, or trace location. Now `runOffline` calls the same
+`footer()`, so both modes report from one place.
+
+### Defect 2: `status` carried a DIFFERENT VOCABULARY per mode
+
+This is the one that mattered most, and it is not a rendering bug.
+
+| | success | privacy block |
+|---|---|---|
+| live | `ANSWER_COMPLETE` | `PRIVACY_BLOCKED` |
+| offline (before) | `COMPLETE` | `BLOCKED` |
+
+cli.md:50 fixes the vocabulary: a block "returns terminal reason `PRIVACY_BLOCKED`,
+exit 3 … JSON includes the same typed status". Offline said `BLOCKED` — a word
+`PRIVACY_BLOCKED` is a superstring of. A consumer keying on the spec value silently
+matches **every** offline block, and one keying on `COMPLETE` misreads live
+success. The exit codes matched; the machine contract did not.
+
+### Defect 3: observed fields were hardcoded
+
+`generationSteps` was a literal `0` for a run that generated a step, and `answer`
+was a literal `null` for an answer that had just been printed. Only `status`,
+`exitCode` and `runId` were interpolated.
+
+### The fix
+
+`OfflineTurnDriver` now exposes `lastOutcome()` and every one of its exit sites goes
+through one `outcome(...)` builder, so no return site can forget to record itself.
+`runOffline` renders through the **same** `renderJson`/`footer` as live. Timings are
+measured (`System.nanoTime`), not invented. `renderOfflineJson` — 886 characters of
+hand-written JSON that existed only because the offline path had nothing to render
+from — is **deleted**.
+
+### Why the existing test missed all three
+
+`jsonSchemaIsStableAcrossModes` compared the **key set** across modes. All three
+defects live in the **values**. Keys were always identical, because the offline
+document was written to mirror the live one. The test asserted the schema and
+nothing about the content, and the divergence was exactly where it did not look.
+
+Lesson recorded: a schema-equality test proves the schema, nothing more. Any field
+whose *value* is produced by a different code path needs its own comparison.
+
+### A test that pinned a defect
+
+`jsonCarriesAnswerAndStatus` asserted `status == "COMPLETE"` — it had frozen the
+divergence in place. Updated to `ANSWER_COMPLETE`, with the reasoning inline and a
+new assertion that `answer` is not null. Worth noting: when fixing a defect, check
+whether an existing green test is *protecting* the old behaviour.
+
+### Mutations (all restored verbatim)
+
+| Mutation | Result |
+|---|---|
+| driver reports `BLOCKED` not `PRIVACY_BLOCKED` | 1 failure |
+| driver: `generationSteps` always 0 | 1 failure |
+| driver: answer suppressed | 1 failure |
+| `runOffline`: footer skipped again | 1 failure |
+| `runOffline`: outcome discarded, fallback used | 6 failures |
+
+The last one mattered: the `orElseGet` fallback was reachable by every offline
+assertion, and `offlineTextModePrintsAFooter` caught the resulting
+`trace unwritten` — so the fallback is not silently load-bearing.
+
+### 454 tests green. Packaged binary
+
+- text mode: `Cost unavailable · 1 generation step · 0.031 s · trace run-…`
+- json mode: `status: ANSWER_COMPLETE`, real `answer`, `generationSteps: 1`, real `runId`
+- privacy block: exit 3, `status: PRIVACY_BLOCKED`, no content
+- the `runId` in the document resolves to a trace on disk that `inspect` reports
+  `COMPLETE`, containing exactly `RunStarted` + `RunTerminated`
+
+That last point is the one I would have broken by "fixing" the missing events: the
+offline trace records no `RouteResolved`/`ModelCompleted` **because none happened**,
+and manufacturing them would be the AUDIT-f mistake in a new place.
+
+### Notes on my own process
+
+- I invented `offlineConfig()`/`configPath()`/`runCli()` in the first test draft and
+  hit a `ValueError` because none exist. Last increment's mistake, repeated once.
+  Read the real helpers first.
+- My first binary probe omitted `--format json` and I reported "empty stdout" as a
+  symptom when it was my own omission. Re-ran before concluding.
+- A `grep` with no path argument read stdin and hung for 300s, killing the kernel.
+  Use the search tool.
+- `turnStartedNanos`/`lastTurnMillis` became dead after wiring; LSP flagged the
+  leftover assignment immediately. Both removed.
+
+### Still open
+
+- `confidenceField` remains an inert config key (AUDIT-e).
+ — the offline path never builds a result, so it reports nothing
 
 Found by following AUDIT-j's footer finding rather than filing it. The cause is
 structural, and it is why the cost conflation in AUDIT-j was invisible through the CLI.
@@ -1388,22 +1489,8 @@ to record. Manufacturing those events to make the trace look uniform would be th
 AUDIT-f mistake in a new place — recording a claim the run never made. Left alone
 deliberately.
 
-### The actual fix
+### Superseded
 
-`OfflineTurnDriver` returns `int` from four exit points (OK, slash-exit, privacy
-blocked, session limit, trace failure) and keeps only `lastRunId` as residual state.
-The honest fix is to have it expose the `TurnOutcome` it actually observed, the way
-the live driver does, so `runOffline` renders the SAME document builder and the footer
-comes from the same place. Then the offline JSON stops being hardcoded constants and
-becomes a rendering — and if the offline path ever does resolve a route, the document
-will say so without anyone editing a string.
-
-This is a real change to a driver signature and is deliberately NOT bundled into AUDIT-j,
-which was about two trace writers and one conflation. It gets its own increment with its
-own mutation battery.
-
-### Register entry
-
-Open, scoped, with the constraint above (observe, never fabricate). It is the reason
-`run --format json` currently cannot be trusted to reflect an offline run's actual
-routing/cost state if that state ever changes.
+This entry was written as a diagnosis before the fix. The fix, the mutation battery and the
+packaged-binary evidence are in the FIXED entry above; the observation that the offline trace
+records only `RunStarted` + `RunTerminated` remains correct and was deliberately preserved.

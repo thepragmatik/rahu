@@ -126,6 +126,43 @@ public final class OfflineTurnDriver {
     private String lastRunId;
 
     /**
+     * The result of the last turn this driver ran, as data rather than an exit code.
+     *
+     * <p>AUDIT-2026-10-03-k. This driver returned a bare {@code int} from every exit
+     * point, so {@code runOffline} could not reach {@code footer()} and had to
+     * hardcode {@code routing:null,cost:null} as literal constants. That is honest by
+     * accident rather than by observation: the moment this path resolves a route or
+     * records usage, the document would still claim null. Mirrors
+     * {@link LiveTurnDriver#lastOutcome()}.
+     */
+    public java.util.Optional<TurnOutcome> lastOutcome() {
+        return java.util.Optional.ofNullable(lastOutcome);
+    }
+
+    private TurnOutcome lastOutcome;
+    private String lastAnswer;
+    private int completedTurns;
+
+    private static long elapsedMs(long startedNanos) {
+        return (System.nanoTime() - startedNanos) / 1_000_000L;
+    }
+
+    /**
+     * Records the outcome and returns the exit code, so every return site carries its
+     * own result and none can forget to.
+     */
+    private int outcome(int exitCode, String terminalReason, String answer,
+        String runId, int generationSteps, long elapsedMs) {
+        lastOutcome = new TurnOutcome(exitCode, terminalReason,
+            java.util.Optional.ofNullable(answer),
+            java.util.Optional.ofNullable(runId),
+            java.util.Optional.empty(),   // routing: resolved by the live path only
+            java.util.Optional.empty(),   // usage: no model is called offline
+            generationSteps, elapsedMs);
+        return exitCode;
+    }
+
+    /**
      * The same loop without chat's end-of-input banner.
      *
      * <p>{@code run} is a bounded task (cli.md:15), so it must not print
@@ -138,6 +175,7 @@ public final class OfflineTurnDriver {
     }
 
     private int runLoop(boolean announceEnd) {
+        long startedAtNanos = System.nanoTime();
         var gate = new PrivacyGate();
         var traceConfig = TurnTrace.forSession(Path.of(cfg.trace().directory()), cfg, session);
 
@@ -193,7 +231,8 @@ public final class OfflineTurnDriver {
                 // and limit-reached. This matched the live driver's WRONG 4 rather
                 // than the spec - AUDIT-2026-10-03-d. Agreeing with a sibling bug is
                 // not conformance.
-                return ExitCode.PRIVACY_BLOCKED;
+                return outcome(ExitCode.PRIVACY_BLOCKED, "PRIVACY_BLOCKED", null,
+                    null, 0, 0);
             }
 
             SessionState.RunHandle turn;
@@ -203,7 +242,8 @@ public final class OfflineTurnDriver {
                 // No run handle, so no run began and nothing is traced: a trace
                 // here would claim a turn that never started.
                 err.println("session limit: " + e.getMessage());
-                return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
+                return outcome(ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY,
+                    "LIMIT_REACHED", null, null, 0, 0);
             }
 
             // The answer must not echo the input. An admitted input may still be
@@ -219,18 +259,24 @@ public final class OfflineTurnDriver {
                     out.println(answer);
                 }
                 turn.complete();
+                lastAnswer = answer;
+                completedTurns++;
                 trace.runTerminated("ANSWER_COMPLETE", 0);
             } catch (rahu.cli.trace.TraceFailureException e) {
                 // A16: a broken sink stops the turn rather than leaving a partial
                 // trace that reads as a complete one.
                 err.println("trace write failed (A16); turn stopped");
-                return ExitCode.TRACE_INTEGRITY_FAILURE;
+                return outcome(ExitCode.TRACE_INTEGRITY_FAILURE, "TRACE_WRITE_FAILED",
+                    null, lastRunId, 0, 0);
             }
         }
         if (announceEnd) {
             err.println("eof: chat ended; history is memory-only and does not survive exit");
         }
-        return ExitCode.OK;
+        // No turn ran at all (empty input), so there is no answer and no steps. The
+        // elapsed time is real; the zero steps are what was observed.
+        return outcome(ExitCode.OK, "ANSWER_COMPLETE", lastAnswer, lastRunId,
+            completedTurns, elapsedMs(startedAtNanos));
     }
 
     /** Adapts a {@link Scanner} over stdin to the line supplier the loop consumes. */

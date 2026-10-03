@@ -201,8 +201,17 @@ class RunCommandTest {
     void jsonCarriesAnswerAndStatus() {
         Run result = offline("--format", "json");
         String doc = result.out().strip();
-        assertTrue(doc.contains("\"status\":\"COMPLETE\""), doc);
+        // "ANSWER_COMPLETE", not "COMPLETE". This assertion previously pinned
+        // "COMPLETE", which only the offline path ever emitted - the live driver
+        // reports terminalReason, so the same key carried a different word
+        // depending on mode (AUDIT-2026-10-03-k). The live driver's initial
+        // terminal reason is ANSWER_COMPLETE (LiveTurnDriver:276) and cli.md:50
+        // fixes the vocabulary for the terminal cases.
+        assertTrue(doc.contains("\"status\":\"ANSWER_COMPLETE\""), doc);
         assertTrue(doc.contains("\"answer\""), doc);
+        assertFalse(doc.contains("\"answer\":null"),
+            "the offline driver has the answer in hand, so suppressing it in the "
+                + "document hides what the run produced: " + doc);
     }
 
     @Test
@@ -376,6 +385,67 @@ class RunCommandTest {
      * pipeline rather than here. Values legitimately differ (offline records no runId
      * and no cost); the KEYS must not.
      */
+    // ==================================================================
+    // AUDIT-2026-10-03-k: the offline path must report what it OBSERVED.
+    //
+    // One root cause, three defects: runOffline returned a bare int, so the
+    // footer was never called and every offline JSON field was a hardcoded
+    // constant instead of a rendering. jsonSchemaIsStableAcrossModes caught
+    // none of it, because it compared KEYS and all three defects live in
+    // the VALUES.
+    // ==================================================================
+
+    @Test
+    @DisplayName("offline json uses the live driver's status vocabulary")
+    void offlineStatusVocabularyMatchesTheLiveDriver() {
+        // cli.md:50: a mandatory-context block "returns terminal reason
+        // PRIVACY_BLOCKED, exit 3 ... JSON includes the same typed status".
+        // Live reports exactly that. Offline reported "BLOCKED" - the same
+        // key, a DIFFERENT vocabulary depending on mode. A consumer matching
+        // on PRIVACY_BLOCKED silently misses every offline block, and one
+        // matching on COMPLETE misreads a live ANSWER_COMPLETE. Values are
+        // the machine contract; keys alone never were.
+        Run blocked = run("", "run", "--config", OFFLINE.toString(), "--prompt", "x",
+            "--input-classification", "unclassified-sensitive", "--format", "json");
+
+        assertEquals(3, blocked.code(), "cli.md:50 - privacy blocked is exit 3");
+        assertTrue(blocked.out().contains("\"status\":\"PRIVACY_BLOCKED\""),
+            "offline must use the same status vocabulary as the live driver, not its own: "
+                + blocked.out());
+    }
+
+    @Test
+    @DisplayName("offline json reports the steps and runId it actually observed")
+    void offlineJsonReportsObservedFieldsNotConstants() {
+        // Every field here was an interpolated literal before AUDIT-k:
+        // generationSteps was 0 for a run that generated a step, and the
+        // runId was null for a trace the driver demonstrably wrote.
+        Run ok = offline("--format", "json");
+
+        assertEquals(0, ok.code(), ok.err());
+        assertTrue(ok.out().contains("\"generationSteps\":1"),
+            "one turn generated one step; a constant 0 is not a reading: " + ok.out());
+        assertFalse(ok.out().contains("\"runId\":null"),
+            "the driver DID write a trace, so the id must be reported: " + ok.out());
+    }
+
+    @Test
+    @DisplayName("offline text mode prints the footer it previously omitted")
+    void offlineTextModePrintsAFooter() {
+        // footer() - which prints the route line, the cost line and the trace
+        // id to stderr - was only ever called on the live path. An operator
+        // running offline got the answer and nothing about routing, cost or
+        // where the trace went. The cost must read "unavailable", not $0.00:
+        // no model was called, so no cost was REPORTED (A10).
+        Run ok = offline();
+
+        assertEquals(0, ok.code(), ok.err());
+        assertTrue(ok.err().contains("Cost unavailable"),
+            "offline must still state its cost honestly (unobserved, not zero): " + ok.err());
+        assertTrue(ok.err().contains("trace run-"),
+            "the footer must name the trace the driver actually wrote: " + ok.err());
+    }
+
     @Test
     @DisplayName("offline json carries the same keys as the live document")
     void jsonSchemaIsStableAcrossModes() {

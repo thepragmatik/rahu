@@ -214,30 +214,25 @@ public final class RunCommand implements Callable<Integer> {
             null, out(), err(), oneLine, false, !json());
 
         int code = driver.runWithoutEndOfInputBanner();
+        // AUDIT-2026-10-03-k: render from what the driver OBSERVED, through the SAME
+        // builder the live path uses. The previous renderOfflineJson emitted
+        // "routing":null,"cost":null as literal constants and derived "status" from the
+        // exit code, so it reported the same fields regardless of what happened - and
+        // used a different status vocabulary from the live driver for the same values
+        // (cli.md:50 requires PRIVACY_BLOCKED; offline said "BLOCKED").
+        TurnOutcome outcome = driver.lastOutcome().orElseGet(() -> new TurnOutcome(
+            code, "NO_TURN", java.util.Optional.empty(), java.util.Optional.empty(),
+            java.util.Optional.empty(), java.util.Optional.empty(), 0, 0));
         if (json()) {
             // The answer is suppressed at the driver, so this document is the ONLY thing
-            // on stdout. runId comes from the driver, which actually wrote the trace -
-            // reconstructing it here would report an id that resolves to nothing.
-            out().println(renderOfflineJson(driver.writtenRunId().orElse(null), code));
+            // on stdout.
+            out().println(renderJson(outcome));
+        } else {
+            // The footer was previously live-path-only, so an offline operator got the
+            // answer and no routing, cost or trace id at all.
+            footer(outcome);
         }
-        return code;
-    }
-
-    /**
-     * The offline JSON document, with the SAME keys as the live one.
-     *
-     * <p>A schema that changes shape with the mode is a schema no consumer can rely on:
-     * automation would need two parsers and would discover the difference as a KeyError
-     * in someone else's pipeline. Values differ honestly - {@code runId} is null because
-     * offline writes no run trace, and {@code answer} is null because the fixed text
-     * went to stdout in text mode.
-     */
-    private String renderOfflineJson(String runId, int exitCode) {
-        String status = exitCode == ExitCode.OK ? "COMPLETE" : "BLOCKED";
-        return "{\"status\":\"" + status + "\",\"exitCode\":" + exitCode
-            + ",\"answer\":null,\"routing\":null,\"cost\":null,"
-            + "\"generationSteps\":0,\"runId\":" + (runId == null ? "null" : "\"" + runId + "\"")
-            + "}";
+        return outcome.exitCode();
     }
 
     // -------------------------------------------------------------------- live
