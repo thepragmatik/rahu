@@ -3333,3 +3333,93 @@ record build versions there, no code emits it, and `docs/generated/` holds only
 
 **546 tests green** (184 core / 21 openrouter / 36 systemone / 305 cli), 0 skipped.
 `DocumentedClaimsTest` caught the README a third time — that guard earns its keep.
+
+
+---
+
+## AUDIT-2026-10-03-ad — the manifest the spec promised and no build produced
+
+Last unfulfilled item in the artifacts.md section ac audited. `artifacts.md` says: *"Record
+build versions/revisions in `docs/generated/build-manifest.json` when building. Do not write
+'latest' as a reproducible version."*
+
+**Nothing emitted it.** No build-info resource, no `git-commit-id-plugin`, nothing in any pom.
+`docs/generated/` held only `config.schema.json` and `model-profiles.json`.
+
+### Why it is NOT a committed artifact
+
+The sibling `config.schema.json` *is* committed and `SchemaGeneratorTest` asserts it byte for
+byte. Copying that pattern here would have been wrong, and the reason is the word *revision*:
+a manifest carries the build revision, so a tracked one is dirty on every commit that is not
+itself the manifest update, and a byte-sync assertion then goes red for a reason unrelated to
+correctness. `docs/generated/` is already in `.gitignore` for exactly this class of file
+(`model-profiles.json` is ignored for the same reason), and `git check-ignore` confirms the
+manifest lands there. The tests pin the **content rules**, which is the part that can regress.
+
+### What "reproducible" is taken to mean
+
+Two substitutions look like a version and are useless for reproduction, so both are refused or
+flagged rather than written:
+
+- `latest` names no build at all — refused outright, case-insensitively, and `requireVersion`
+  is applied to module versions too, so the rule cannot be bypassed by nesting.
+- `-SNAPSHOT` changes under its own name on every rebuild, so `0.1.0-SNAPSHOT` (this project's
+  actual version) is the *same class of error as `latest`*, just subtler because it looks
+  specific. It is recorded rather than hidden, with `isSnapshot:true` and `reproducible:false`.
+
+`reproducible` also requires a **clean tree**: version + revision is necessary but not
+sufficient, because the revision names a commit and a dirty tree means the bytes are not that
+commit's bytes. No revision supplied (a tarball build has no VCS) records
+`revisionSource:"unavailable"` and null — never a placeholder, which would read like a hash.
+
+11 tests, all mutations caught:
+
+| mutation | caught |
+|---|---|
+| `latest` check removed | the refusal + the module-version refusal |
+| blank-version check removed | the blank refusal |
+| snapshot detection always false | snapshot flag + detection coverage |
+| `isSnapshot` field dropped | snapshot flag |
+| `reproducible` hardcoded true | dirty-tree, unavailable-revision, snapshot |
+| revision never unavailable | unavailable-revision |
+| placeholder revision written | released-build |
+| module versions unchecked | module-version refusal |
+
+### The defect the tests could not have found
+
+I generated a manifest with `-Drahu.version=1.2.3` and *read it*: `build.version` said
+`1.2.3` while every module still said `0.1.0-SNAPSHOT`. One document naming two versions for
+one build. The module map was built from repeated string literals, so no property test on the
+generator could see it. Fixed by deriving all four modules from one value; the test now
+asserts the aggregate property (every module version equals the project version) rather than
+the plumbing.
+
+### The wiring I tried, and why I removed it
+
+The obvious way to satisfy "when building" is `exec-maven-plugin` bound to `package`. It
+resolves and the generator runs — and then `./mvnw -o clean verify` fails, because this
+project builds **offline** and only the POMs for `commons-exec:1.5.0` and `asm:9.9` are in
+`~/.m2`, never the JARs. A green offline build is a hard project invariant, so I reverted the
+plugin rather than trade it for a convenience. The generator ships as a runnable `main`
+(`java -cp <cli jars> rahu.cli.BuildManifestGenerator .`, optionally `-Drahu.revision`,
+`-Drahu.version`) — verified by running it — and `artifacts.md` now states plainly that the
+file is **not** emitted automatically and why. Automation belongs with CI/release hardening,
+which has a dependency-fetching step; doing it here would have meant a build that only works
+online.
+
+### Two more harness faults, same family as ac
+
+- **A `try/finally` restore hid a real compile error.** M3 first rendered as "failing: NONE"
+  while rc=1; the cause was `illegal start of expression` -- my replacement left a stray
+  `return;`. Attributing rc=1 to "no failing tests" is the exact failure mode of a harness that
+  cannot tell a broken build from a passing one. Now: `COMPILATION ERROR` is checked and
+  printed explicitly before reading test results.
+- **An earlier cell aborted on an `assert` BEFORE its restore line**, leaving the M3 mutation
+  in the source file. The next cell then read the mutated file as its own "good" baseline and
+  reported two false failures. Restores must be unconditional (`finally`), and the baseline
+  must be re-read from a known-clean source.
+- A test I wrote asserted `findValuesAsText("")`, which returns nothing for object nodes -- a
+  green-looking assertion that could never fail. Rewritten to iterate the fields.
+
+**553 tests green** (184 core / 21 openrouter / 36 systemone / 316 cli), 0 skipped.
+`DocumentedClaimsTest` caught the README a fourth time (546 -> 552 -> 553).
