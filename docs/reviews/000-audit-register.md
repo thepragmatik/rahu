@@ -1494,3 +1494,96 @@ deliberately.
 This entry was written as a diagnosis before the fix. The fix, the mutation battery and the
 packaged-binary evidence are in the FIXED entry above; the observation that the offline trace
 records only `RunStarted` + `RunTerminated` remains correct and was deliberately preserved.
+
+---
+
+## AUDIT-2026-10-03-e — FIXED: `confidenceField`, deferred five times as "needs a wire-contract change"
+
+The fifth "still open" line in this register. Recorded as HIGH by audit 016 (F-11),
+flagged in audit 017, and carried forward through five increments. The stated reason
+each time was that it needs a wire-contract change. It did — and it was small.
+
+### What was actually wrong
+
+`confidenceField` was parsed (`ConfigLoader:226`), schema-exposed, traced, captured,
+replayed, and **never read**. `RouteResolver.resolve` compared
+`chosenProb >= confidenceFloor` unconditionally, so every value of the setting
+behaved identically to the default.
+
+Worse than inert: the name is *descriptive*. An operator reading
+`confidenceField: "raw_confidence"` reasonably concludes the gate runs on that field.
+It ran on `chosen_probability` and said nothing.
+
+### The spec decided it
+
+routing.md:26: *"Keep probability of the chosen action, provider confidence and its
+formula separate. Confidence thresholds operate on a named field; default
+`chosen_probability` is 0.65."*
+
+So `DecisionResult.ValidChoice` already carries both — `probabilities` and
+`rawConfidence` — and the spec explicitly requires them kept apart. Two fields are
+therefore supported: `chosen_probability` (default) and `raw_confidence`.
+
+- `ResolutionInput` now **rejects an unknown field name**. Accepting one silently
+  would restore exactly the lie being removed.
+- The floor evaluates the **named** field.
+- A named field the decision does not carry **fails the gate**. Substituting the
+  default, `0.0` or `1.0` would manufacture evidence the decision never produced.
+- The max-probability check stays on the probability in both cases: it is a property
+  of the decision's distribution, not of the confidence field.
+
+### Mutations
+
+| Mutation | Result |
+|---|---|
+| resolver: always `chosen_probability` (the original defect) | 2 failures |
+| resolver: absent named field falls back to the probability | 1 failure |
+| resolver: unknown-field validation removed | 1 failure |
+| resolver: `isFinite` filter removed | **0 failures — see below** |
+
+### The surviving mutation was NOT an equivalent mutant
+
+I had this rule recorded from AUDIT-j: a surviving mutation is evidence about the
+*battery* first. So I checked before filing it as an equivalent mutant — and my
+first reasoning was wrong.
+
+I argued: "`NaN >= 0.65` is false, so with or without the filter a non-finite value
+is rejected." Printing the actual comparisons:
+
+```
+NaN  >= 0.65  -> False
++inf >= 0.65  -> TRUE      <-- 
+-inf >= 0.65  -> False
+```
+
+`Double.POSITIVE_INFINITY` satisfies any threshold. Without the filter, a provider
+returning an infinite `raw_confidence` sails straight through the concentration gate
+— precisely the failure the gate exists to prevent. The filter was load-bearing and
+**no test covered it**.
+
+Added `nonFiniteConfidenceNeverSatisfiesTheFloor` over both `+inf` and `NaN`. The
+mutation now produces 1 failure, with the message showing the accepted route.
+
+This is the mirror of the AUDIT-j lesson: there, a surviving mutation was a too-narrow
+battery. Here it was a real defect in my own new code, hidden because the obvious
+reasoning about it was *nearly* right — `NaN` behaves as I assumed, `+inf` does not.
+"Equivalent mutant" is a claim to verify, never a conclusion to reach from one
+example.
+
+### A test-breaking change I had to make
+
+`ReplayCaptureTest` passed `input("f", …)` — an arbitrary one-character field name in
+eleven places, legal only because the field was never read. Replaced with
+`chosen_probability`. Worth noting: those tests *passed on an invalid configuration*
+for as long as the setting was inert. Once the setting is validated, an
+accepted-and-ignored field stops being a free pass for arbitrary test data.
+
+### 458 tests green (158 core / 14 openrouter / 30 systemone / 256 cli)
+
+### Remaining inert configuration keys
+
+`decision.confidenceSemantics`, `tools.resultBytes`,
+`OperationRequirements.isTextAnswer` and `.structuredOutputRequired` are still
+accepted and never read. Same shape, same treatment owed — but each needs its spec
+read first, as this one did. Registered as the next sweep rather than bundled here.
+

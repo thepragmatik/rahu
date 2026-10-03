@@ -93,7 +93,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("exclusions survive, because the resolver consults them")
     void exclusionsArePartOfTheInput() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         ReplayCapture.Frozen frozen = ReplayCapture.read(root);
 
@@ -163,7 +163,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("a capture with no confidenceFloor is refused, not defaulted")
     void missingConfidenceFloorIsRefused() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         Path file = root.resolve(ReplayCapture.FILE);
         String json = Files.readString(file)
@@ -178,7 +178,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("an unknown candidate policy suffix is refused")
     void unknownPolicySuffixIsRefused() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         Path file = root.resolve(ReplayCapture.FILE);
         Files.writeString(file, Files.readString(file).replace("\"fast@low\"", "\"fast@turbo\""));
@@ -192,7 +192,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("a capture whose schemaVersion is unknown is refused")
     void unknownSchemaVersionIsRefused() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         Path file = root.resolve(ReplayCapture.FILE);
         Files.writeString(file, Files.readString(file)
@@ -207,7 +207,7 @@ class ReplayCaptureTest {
     void nonRoutingDecisionIsRefused() {
         DecisionResult noul = new DecisionResult.ValidNoul("q", true, Optional.of(0.5));
         assertThrows(IllegalArgumentException.class, () -> ReplayCapture.write(root,
-            CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5), Optional.of(noul)));
+            CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5), Optional.of(noul)));
     }
 
     // ---------------------------------------------------------------- privacy
@@ -215,7 +215,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("the capture contains no prompt text, even when the prompt is sensitive")
     void captureCarriesNoPromptText() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         String captured = Files.readString(root.resolve(ReplayCapture.FILE));
 
@@ -233,7 +233,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("the capture stores no resolution, so a replay must re-derive")
     void captureStoresNoResolution() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         String captured = Files.readString(root.resolve(ReplayCapture.FILE));
 
@@ -255,12 +255,12 @@ class ReplayCaptureTest {
         // not about map ordering.
         Path a = root.resolve("a");
         Path b = root.resolve("b");
-        ReplayCapture.write(a, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(a, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(choice("quality@medium", "quality@medium", "fast@low")));
         Map<String, Double> reordered = new LinkedHashMap<>();
         reordered.put("quality@medium", 0.5);
         reordered.put("fast@low", 0.5);
-        ReplayCapture.write(b, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(b, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.of(new DecisionResult.ValidChoice("q", "quality@medium", reordered,
                 Optional.of(0.9), "self-reported")));
 
@@ -271,7 +271,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("replay is deterministic across repeated invocations")
     void replayIsDeterministic() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.65),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.65),
             Optional.of(choice("fast@low", "fast@low", "quality@medium")));
         ReplayCapture.Frozen frozen = ReplayCapture.read(root);
 
@@ -283,7 +283,7 @@ class ReplayCaptureTest {
     @Test
     @DisplayName("no decision in the capture replays as UNAVAILABLE, never as a guess")
     void absentDecisionIsUnavailable() throws IOException {
-        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("f", 0.5),
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE, input("chosen_probability", 0.5),
             Optional.empty());
         ReplayOutcome outcome = ReplayEngine.replay(ReplayCapture.read(root));
 
