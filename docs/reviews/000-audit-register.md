@@ -2771,3 +2771,87 @@ Wire `WorkspaceTools.invoke`'s default branch to the registry so a third-party t
 execute, and add the `EffectClass` field + rejection to `Tool` **in the same change**,
 so the working path and its gate arrive together. `ExtensionSurfaceTest` will go red on
 the first half, which is the intent.
+
+
+---
+
+## AUDIT-2026-10-03-x — A26 closed: the extension path works AND effectful tools are refused
+
+This is the fix for AUDIT-2026-10-03-w. Both halves landed in one change, because
+landing either alone would have been a regression.
+
+### What changed (49 insertions, 5 deletions across 3 main files)
+
+| file | change |
+|---|---|
+| `Tool.java` | new `EffectClass effect` field; 4-arg ctor defaults to `READ_ONLY`; 5-arg ctor rejects null |
+| `ToolRegistry.of` | refuses any tool whose effect is not `READ_ONLY`, naming the tool and the effect |
+| `WorkspaceTools` | new 5-arg `executeToolCall` overload; `invoke` falls back to the registry |
+| `ToolLoop.observationOf` | passes its registry to the dispatcher |
+
+Two design choices worth naming:
+
+**Silence means safe.** The 4-arg constructor (the one all shipped code uses) defaults
+to `READ_ONLY`, so a tool that declares nothing *cannot* be anything but read-only.
+Declaring an effect requires naming it explicitly. That inverts the A26 failure: a
+missing field used to be the thing that made the gate impossible to write.
+
+**The gate fires at composition, not dispatch.** A gate that ran the executor and then
+rejected the *result* would already have produced the side effect it exists to prevent.
+`refusalIsAtRegistrationNotDispatch` asserts the executor ran zero times.
+
+### The registry fallback sits BEHIND the built-in switch
+
+Dispatch tries the three shipped workspace tools first, then the registry. Reordering it
+so the registry answers first would be harmless today (names are unique) and would stop
+being harmless the moment a third party shipped a `workspace.read`. Asserted directly,
+by index, so the ordering cannot silently invert.
+
+### It also closes a spec claim
+
+`extensibility.md:13` requires a new Tool to "run through the same admission path as
+built-ins". That was false — it ran through no path at all. It is now literally true:
+the privacy gate and injection gate in `observeAll` sit ABOVE the dispatch switch, so a
+registered tool cannot reach its executor without passing exactly the gates a built-in
+passes. Verified by reading the order of operations, not by assumption.
+
+### Two of my own tests went red, and that is the point
+
+`ExtensionSurfaceTest`'s two central tests asserted the DEFECT: that the hardcoded switch
+was still the only dispatch, and that `Tool` had no effect field. The moment the fix
+landed they failed (F=1, E=1). I rewrote them to point the other way rather than
+deleting them — `dispatchConsultsTheRegistry` now fails if the fallback disappears, and
+`toolHasAnEffectClassTheRegistryEnforces` fails if the field is dropped.
+
+Two tests that go red on your own fix are evidence the fix changed real behaviour.
+Deleting them would leave no trace that the surface was ever broken, and nothing would
+stop it going inert again.
+
+### Mutation testing found a gap in my own fix
+
+| mutation | before the wiring test | after |
+|---|---|---|
+| M1 `ToolRegistry.of` drops the effect gate | CAUGHT F=3 | — |
+| M2 dispatch drops the registry fallback | CAUGHT F=2 | — |
+| **M3 `ToolLoop` stops passing its registry** | **SURVIVED (524 ran)** | **CAUGHT F=1** |
+| M4 gate moved after `map.put` | CAUGHT F=1 | — |
+| M5 dispatch returns a stub, never executes | — | CAUGHT F=2 |
+| M6 gate narrowed to refuse only `DESTRUCTIVE` | — | CAUGHT F=1 |
+
+M3 surviving was the important result. The core tests all pass a registry in by hand,
+so nothing exercised the production wiring — deleting the line that hands the registry
+to the dispatcher reproduced the original A26 defect one layer up and the suite stayed
+green across 524 tests. That is precisely the failure mode this whole audit keeps
+finding: **a gate that nothing calls still passes every test written for it.**
+
+`ToolLoopExtensionWiringTest` closes it at the CLI layer, where the wiring actually
+lives, and includes the negative halves (an unregistered name is still refused; the
+shipped tools still work) so the positive test cannot pass for the wrong reason.
+
+### Also corrected
+
+`ToolRegistryTest.rejectsDuplicate` carried a comment pointing effect admission at
+`AdmissionPipeline` — a subsystem no production code calls. It now names
+`ToolRegistry.of`, which is what actually enforces it.
+
+516 → **528 tests green** (184 core / 21 openrouter / 36 systemone / 287 cli).

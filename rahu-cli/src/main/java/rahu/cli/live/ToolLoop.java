@@ -386,7 +386,8 @@ public final class ToolLoop {
     private String observationOf(ToolCall call, String canonical) {
         ToolResult result;
         try {
-            result = workspace.executeToolCall(call.id(), call.name(), canonical, callLog);
+            result = workspace.executeToolCall(call.id(), call.name(), canonical, callLog,
+                registry);
         } catch (ToolCallLog.ProtocolError e) {
             result = ToolResult.failed("protocol violation: " + e.getMessage());
         }

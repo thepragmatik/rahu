@@ -44,9 +44,11 @@ class ToolRegistryTest {
             (args, boundary) -> ToolResult.success("", false));
         assertThrows(IllegalArgumentException.class,
             () -> ToolRegistry.of(dup, dup));
-        // Effect-class admission is enforced by AdmissionPipeline (step 3),
-        // tested in AuthorityAndOrchestrationTest — the registry itself only
-        // ships read-only tools, so an effectful one has no registration path.
+        // Effect-class admission is enforced by ToolRegistry.of (step 3): a Tool
+        // declares its EffectClass and the registry refuses anything but READ_ONLY,
+        // so an effectful tool has no registration path at all. Covered by
+        // EffectClassRegistrationTest and ExtensionSurfaceTest. The registry's only
+        // remaining job here is that the names it ships are read-only ones.
     }
 
     @Test

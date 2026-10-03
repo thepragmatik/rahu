@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import rahu.core.authority.EffectClass;
 
 /**
  * Frozen tool registry (extensibility.md): composed once at session start,
@@ -28,6 +29,20 @@ public final class ToolRegistry {
             if (map.containsKey(t.name())) {
                 throw new IllegalArgumentException(
                     "duplicate tool registration: " + t.name());
+            }
+            // A26: "alpha registration rejects non-read-only effect classes". This was
+            // absent because Tool carried no effect class at all — the rule was
+            // satisfiable only vacuously, and nothing could be effectful enough to
+            // violate it. Enforced at COMPOSITION, before the executor is reachable,
+            // because a gate that ran the code and then rejected the result would have
+            // already produced the side effect it exists to prevent.
+            //
+            // restrictedTo() rebuilds through of(), so narrowing cannot launder an
+            // effectful tool into a new registry.
+            if (t.effect() != EffectClass.READ_ONLY) {
+                throw new IllegalArgumentException(
+                    "tool " + t.name() + " declares effect class " + t.effect()
+                        + "; only READ_ONLY is admissible in alpha");
             }
             map.put(t.name(), t);
         }

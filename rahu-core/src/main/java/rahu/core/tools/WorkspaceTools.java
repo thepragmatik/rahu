@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Stream;
 
 /**
@@ -73,25 +74,52 @@ public final class WorkspaceTools {
     /** Dispatches a validated tool call, enforcing the A09 call-ID contract. */
     public ToolResult executeToolCall(String callId, String toolName, String argumentsJson,
         ToolCallLog log) {
+        return executeToolCall(callId, toolName, argumentsJson, log, null);
+    }
+
+    /**
+     * Dispatches against a registry as well as the built-in workspace tools.
+     *
+     * <p>AUDIT-2026-10-03-x: this overload is what makes A26's extension path real.
+     * The only dispatch was a hardcoded three-case switch that never consulted the
+     * registry, so a tool could be registered, advertised to the provider and still
+     * come back {@code unknown tool}. The registry is consulted only for names the
+     * switch does not handle, so the shipped tools keep their exact behaviour and an
+     * absent registry degrades to the previous semantics rather than to a null error.
+     *
+     * <p>Reaching a registered tool's executor means {@link ToolRegistry#of} already
+     * admitted it as READ_ONLY — registration is the only way in, and it refuses
+     * every other effect class.
+     */
+    public ToolResult executeToolCall(String callId, String toolName, String argumentsJson,
+        ToolCallLog log, ToolRegistry registry) {
         String canonical = CanonicalJson.canonicalize(argumentsJson);
         ToolResult cached = log.lookup(callId, canonical);
         if (cached != null) {
             return cached;
         }
-        ToolResult result = invoke(toolName, canonical);
+        ToolResult result = invoke(toolName, canonical, registry);
         log.record(callId, canonical, result);
         return result;
     }
 
-    private ToolResult invoke(String toolName, String canonicalArgs) {
+    private ToolResult invoke(String toolName, String canonicalArgs, ToolRegistry registry) {
         SimpleArgs args = SimpleArgs.parse(canonicalArgs);
-        return switch (toolName) {
+        var builtin = switch (toolName) {
             case "workspace.list" -> list(args.string("directory"), args.integer("depth"));
             case "workspace.read" -> read(args.string("path"),
                 args.integer("fromLine"), args.integer("toLine"));
             case "workspace.search" -> search(args.string("text"), args.string("directory"));
-            default -> ToolResult.invalid("unknown tool: " + toolName);
+            default -> null;
         };
+        if (builtin != null) {
+            return builtin;
+        }
+        var registered = registry == null ? Optional.<Tool>empty() : registry.find(toolName);
+        if (registered.isEmpty()) {
+            return ToolResult.invalid("unknown tool: " + toolName);
+        }
+        return registered.get().execute(canonicalArgs, boundary);
     }
 
     /** Lists workspace paths, depth 0-3, sorted, capped at 500 entries. */
