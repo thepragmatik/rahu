@@ -36,11 +36,12 @@ class TraceInspectCommandTest {
 
     /** Runs the real entry point and captures both streams. */
     private static Result run(String... args) throws IOException {
-        // Commands write via System.out/System.err directly (the packaged CLI is
-        // the only consumer), so the streams must be swapped at the JVM level.
-        // picocli's setOut/setErr would capture nothing here - and a harness that
-        // silently captures the wrong stream is how a command can appear to print
-        // nothing and still be correct.
+        // Swapped at the JVM level rather than via picocli's setOut/setErr.
+        // AUDIT-2026-10-03-i routed every command through the INJECTED writers, so
+        // picocli's setters would now capture just fine - but this harness still
+        // sees the real streams, which is the stronger assertion: it means the test
+        // does not depend on the command being wired the way the test expects. A
+        // regression back to System.out still shows up here.
         var out = new ByteArrayOutputStream();
         var err = new ByteArrayOutputStream();
         PrintStream realOut = System.out;
@@ -314,5 +315,70 @@ class TraceInspectCommandTest {
         assertNotEquals(null, trace);
         assertTrue(trace.getSubcommands().keySet().contains("inspect"),
             trace.getSubcommands().keySet().toString());
+    }
+
+    /**
+     * AUDIT-2026-10-03-j. A run that never observed usage must not be reported as
+     * having used zero tokens.
+     *
+     * <p>The original encoding was {@code asInt(0)}, so a provider that returned no
+     * counts became "promptTokens: 0" in the report - indistinguishable from a
+     * genuinely free request. For an observability tool whose entire job is to
+     * report what happened, a self-flattering default is a defect, not a cosmetic
+     * one. Asserted on the JSON, because that is the machine-readable surface other
+     * tools consume.
+     */
+    @Test
+    @DisplayName("unobserved token usage is null, never a fabricated 0")
+    void unobservedUsageIsNotZero(@TempDir Path run) throws IOException {
+        Files.writeString(run.resolve("events.jsonl"), """
+            {"schemaVersion":1,"runId":"r1","sequence":1,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":1,"type":"RunStarted","payload":{"sessionId":"s","configHash":"c",\
+            "catalogHash":"k"}}
+            {"schemaVersion":1,"runId":"r1","sequence":2,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":2,"type":"ModelCompleted","payload":{"requestedModel":"m",\
+            "observedModel":"m","finishReason":"stop",\
+            "usage":{"promptTokens":null,"completionTokens":null,"costMicros":null},\
+            "effort":"provider-default"}}
+            {"schemaVersion":1,"runId":"r1","sequence":3,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":3,"type":"RunTerminated","payload":{"reason":"ANSWER_COMPLETE",\
+            "generationSteps":1}}
+            """);
+
+        Result r = run("trace", "inspect", "--format", "json", run.toString());
+        assertEquals(0, r.exit(), r.err());
+        var usage = com.fasterxml.jackson.databind.json.JsonMapper.builder().build()
+            .readTree(r.out()).path("usage");
+        assertTrue(usage.path("promptTokens").isNull(),
+            "unobserved prompt tokens must be null, not 0: " + usage);
+        assertTrue(usage.path("completionTokens").isNull(),
+            "unobserved completion tokens must be null, not 0: " + usage);
+    }
+
+    /**
+     * The complement of the test above: a real measurement is still reported as a
+     * number. Without this, "always emit null" would satisfy the previous test while
+     * destroying the feature.
+     */
+    @Test
+    @DisplayName("a recorded token count is still reported as a number")
+    void observedUsageIsReportedVerbatim(@TempDir Path run) throws IOException {
+        Files.writeString(run.resolve("events.jsonl"), """
+            {"schemaVersion":1,"runId":"r1","sequence":1,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":1,"type":"RunStarted","payload":{"sessionId":"s","configHash":"c",\
+            "catalogHash":"k"}}
+            {"schemaVersion":1,"runId":"r1","sequence":2,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":2,"type":"ModelCompleted","payload":{"requestedModel":"m",\
+            "observedModel":"m","finishReason":"stop",\
+            "usage":{"promptTokens":11,"completionTokens":5,"costMicros":7},\
+            "effort":"provider-default"}}
+            {"schemaVersion":1,"runId":"r1","sequence":3,"timestamp":"2026-01-01T00:00:00Z",\
+            "elapsedMs":3,"type":"RunTerminated","payload":{"reason":"ANSWER_COMPLETE",\
+            "generationSteps":1}}
+            """);
+
+        Result r = run("trace", "inspect", "--format", "json", run.toString());
+        assertEquals(0, r.exit(), r.err());
+        assertTrue(r.out().contains("\"promptTokens\":11"), r.out());
     }
 }

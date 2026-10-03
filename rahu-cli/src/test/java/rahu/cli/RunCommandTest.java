@@ -394,6 +394,15 @@ class RunCommandTest {
             "offline and live JSON must expose the same keys; values may differ");
     }
 
+    /** Parses a rendered document; a parse failure is itself the assertion failing. */
+    private static com.fasterxml.jackson.databind.JsonNode parse(String json) {
+        try {
+            return new ObjectMapper().readTree(json);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new AssertionError("not valid JSON: " + json, e);
+        }
+    }
+
     private static java.util.Set<String> keysOf(String json) {
         try {
             var node = new ObjectMapper().readTree(json);
@@ -691,5 +700,87 @@ class RunCommandTest {
                     + replay.out());
         }
 
+    }
+
+    /**
+     * AUDIT-2026-10-03-j. An unobserved cost must never be reported as zero.
+     *
+     * <p>{@code summary.json} is the machine-readable artifact other tools consume,
+     * so a fabricated {@code 0} here travels further than a wrong human-facing line.
+     * The old encoding was {@code orElse(0)} on every optional field, which made "the
+     * provider told us nothing" indistinguishable from "the call was free".
+     *
+     * <p>The offline engine records no usage, which is exactly the case worth
+     * asserting - it is a real run, not a synthetic one, so this locks the behaviour
+     * on a path the suite actually exercises rather than a hand-built fixture.
+     */
+    @Test
+    @DisplayName("summary json reports unobserved usage as null, not 0")
+    void summaryJsonDoesNotFabricateZeroUsage() {
+        Run r = offline("--format", "json");
+        assertEquals(0, r.code(), r.err());
+        var cost = parse(r.out()).path("cost");
+        // Offline may legitimately record no cost at all (costUnobserved) - either
+        // encoding is honest. What is NOT honest is a zero presented as a measurement.
+        if (!cost.isNull()) {
+            assertTrue(cost.path("promptTokens").isNull(),
+                "unobserved prompt tokens must be null, not 0: " + cost);
+            assertTrue(cost.path("completionTokens").isNull(),
+                "unobserved completion tokens must be null, not 0: " + cost);
+            assertTrue(cost.path("micros").isNull(),
+                "unobserved cost must be null, not 0: " + cost);
+        }
+    }
+
+    /**
+     * The complement: a recorded cost must survive as a number. Without this,
+     * "always emit null" would satisfy the test above while destroying the feature.
+     */
+    @Test
+    @DisplayName("summary json still reports a recorded cost as a number")
+    void summaryJsonReportsObservedCostVerbatim() {
+        // Renders the SAME builder the command uses, with an explicitly observed cost.
+        var outcome = new rahu.cli.live.TurnOutcome(
+            0, "ANSWER_COMPLETE", java.util.Optional.of("hello"),
+            java.util.Optional.of("run-1"), java.util.Optional.empty(),
+            java.util.Optional.of(new rahu.core.model.Usage(41, 7, 0, 1234L)), 1, 5L);
+        String json = new RunCommand().renderJson(outcome);
+        var cost = parse(json).path("cost");
+        assertEquals(41, cost.path("promptTokens").asInt(-1), json);
+        assertEquals(7, cost.path("completionTokens").asInt(-1), json);
+        assertEquals(1234L, cost.path("micros").asLong(-1L), json);
+    }
+
+    /**
+     * The reachable gap the first two tests both miss.
+     *
+     * <p>{@code costUnobserved()} is true when usage is absent OR cost is absent, so
+     * the {@code else} branch only runs when a cost WAS observed. But token counts
+     * are separate optionals: a provider can bill a call and return no counts. That is
+     * the one case where the old {@code orElse(0)} actually emitted a fabricated zero
+     * into a machine-readable document - and neither test above reaches it, which is
+     * why mutating {@code orElse(0)} back survived both.
+     *
+     * <p>Asserted on exactly that shape. The complement (a recorded number survives)
+     * is covered by the previous test.
+     */
+    @Test
+    @DisplayName("a billed call with no reported tokens reports null tokens, not 0")
+    void billedButUncountedCallDoesNotFabricateZeroTokens() {
+        var outcome = new rahu.cli.live.TurnOutcome(
+            0, "ANSWER_COMPLETE", java.util.Optional.of("hello"),
+            java.util.Optional.of("run-1"), java.util.Optional.empty(),
+            // Cost observed, token counts absent - the shape a provider that bills
+            // without returning usage produces.
+            java.util.Optional.of(new rahu.core.model.Usage(null, null, null, 500L)),
+            1, 5L);
+        String json = new RunCommand().renderJson(outcome);
+        var cost = parse(json).path("cost");
+        assertEquals(500L, cost.path("micros").asLong(-1L),
+            "the observed cost must still be reported: " + json);
+        assertTrue(cost.path("promptTokens").isNull(),
+            "tokens the provider never returned must be null, not 0: " + json);
+        assertTrue(cost.path("completionTokens").isNull(),
+            "tokens the provider never returned must be null, not 0: " + json);
     }
 }

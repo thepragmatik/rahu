@@ -223,8 +223,13 @@ public final class TraceInspectCommand implements java.util.concurrent.Callable<
         firstOf(events, "ModelCompleted").ifPresent(node -> {
             JsonNode usage = node.path("payload").path("usage");
             Map<String, Object> usageOut = new LinkedHashMap<>();
-            usageOut.put("promptTokens", usage.path("promptTokens").asInt(0));
-            usageOut.put("completionTokens", usage.path("completionTokens").asInt(0));
+            // AUDIT-2026-10-03-j. These used to be asInt(0), which silently reported
+            // UNOBSERVED usage as a measured zero. A reader cannot tell a free request
+            // from a provider that never returned counts, and a cost report that
+            // flatters itself is worse than one that admits ignorance. A JSON null is
+            // now emitted for "not recorded", so the absence is explicit.
+            usageOut.put("promptTokens", intOrNull(usage.path("promptTokens")));
+            usageOut.put("completionTokens", intOrNull(usage.path("completionTokens")));
             report.put("usage", usageOut);
         });
 
@@ -242,6 +247,11 @@ public final class TraceInspectCommand implements java.util.concurrent.Callable<
             }
         }
         return Optional.empty();
+    }
+
+    /** A recorded count, or null when the run never observed one. */
+    private static Integer intOrNull(JsonNode node) {
+        return node.isNumber() ? node.asInt() : null;
     }
 
     private static void put(Map<String, Object> target, String key, String value) {

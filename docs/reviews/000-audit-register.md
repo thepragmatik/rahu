@@ -1229,3 +1229,123 @@ and the multi-run parent still names its candidates. 442 tests green.
 
 - `DemoCommand` still hand-builds its trace rather than using `RunTracer`.
 - `confidenceField` remains an inert config key (AUDIT-e).
+
+
+---
+
+## AUDIT-2026-10-03-j — a second trace writer, and "unobserved" reported as zero
+
+Two defects found by asking a narrow question: does `demo` still hand-build its trace?
+Yes. Following that turned up a reader bug affecting every run, not just the demo.
+
+### Defect 1: `DemoCommand` was a second, independently-maintained trace writer
+
+It assembled the JSONL envelope with a private `event()` helper instead of using
+`RunTracer`. It had **already drifted**:
+
+| Event | Fields the hand-built writer omitted |
+|---|---|
+| `RunStarted` | `turnIndex` |
+| `RouteResolved` | `degraded`, `excludedCandidates` |
+| `ModelCompleted` | `usage` was the STRING `"unavailable"`, not a counters object |
+
+Nothing caught it, because nothing compared the two writers. `TraceEvent.payloadJson`
+is an untyped `String` — **no code validates trace payload shape at all**, so a
+divergent dialect parses fine.
+
+That last point is what makes the omission dangerous rather than cosmetic: `inspect`
+reads `degraded` with `asBoolean(false)` and the string-`usage` payload with
+`asInt(0)`. So a demo trace reported `degraded: false` and `promptTokens: 0` — claims
+the trace never actually recorded, indistinguishable from real measurements.
+
+Demo now emits through `RunTracer`. The demo's job is to show what a real run looks
+like, and it cannot do that while writing a different dialect.
+
+### Defect 2: "unobserved" encoded as `0`, in two shipped outputs
+
+Not demo-specific — the readers do it:
+
+- `TraceInspectCommand`: `usage.path("promptTokens").asInt(0)`
+- `RunCommand.renderJson`: `.promptTokensOpt().orElse(0)`
+
+`LiveTurnDriver` already printed `"unknown"` for the same absence, so the codebase
+knew the distinction existed and two output paths contradicted it. A provider that
+returns no counts becomes a call reported as free. For a tool whose job is reporting
+what happened, a self-flattering default is a defect.
+
+Both now emit JSON `null`. **451 tests green.**
+
+### What the tests assert, and how I know they bite
+
+`DemoCommandTest` asserts the demo's trace is dialect-compatible with the real tracer
+(every tracer field present, `usage` an object, values honest), plus a round trip:
+`inspect` must read the demo trace and preserve the null. `TraceInspectCommandTest`
+and `RunCommandTest` each assert both directions — unobserved is null, **and** a
+recorded value still comes through as a number, so "always null" can't pass while
+destroying the feature.
+
+Mutation results, all restored verbatim:
+
+| Defect restored | Result |
+|---|---|
+| demo: usage fabricated as zeros | 2 failures |
+| tracer: `turnIndex` dropped | 1 failure |
+| tracer: `degraded` dropped | 4 failures |
+| inspect: `asInt(0)` | 2 failures |
+| summary.json: `promptTokens` `orElse(0)` | 1 failure |
+| summary.json: `completionTokens` `orElse(0)` | 1 failure |
+
+### Three things I got wrong verifying this
+
+1. **I invented an API.** Wrote `RunCommand.renderSummaryJsonForTest` and guessed
+   `Usage`'s arity (it's 4 fields, not 3). Compiler caught both. The real need was to
+   reach the observed-cost encoding at all, so `renderJson` was made package-private —
+   a real seam serving a real test, not a fabricated one.
+
+2. **My new `summary.json` tests passed vacuously.** Mutating `orElse(0)` back
+   *survived*. Cause: `costUnobserved()` is true when usage is absent **or cost is
+   absent**, so the `else` branch only runs when a cost *was* observed — and the offline
+   engine records no usage at all, so the branch was never entered. The reachable case
+   is a provider that **bills a call but returns no token counts**. Added that
+   specifically; it is the one input that distinguishes the two encodings.
+
+3. **I nearly filed a false "uncovered" finding.** `micros`' `orNull` still survived
+   mutation, and `costUnobserved()` itself could be deleted with every test green.
+   Before reporting that as a hole I re-ran against `TurnOutcomeTest`, which owns the
+   gate — both mutations produce 2 failures there. **No hole: my mutation battery was
+   scoped too narrowly.** Lesson: a surviving mutation is evidence about the *battery*,
+   not automatically about the code.
+
+### A test bug worth recording
+
+My first `DemoCommandTest` used `@TempDir` and read `$TMPDIR/.rahu/runs` — while the
+command wrote to the **repository**, because the JVM caches its working directory and
+`user.dir` cannot redirect it. The "isolated" tests were creating real run directories
+in the repo. Fixed with a package-private `DemoCommand.traceRoot` seam, seeded and
+restored per test. `@TempDir` is not process isolation; check what the code under test
+actually resolves against.
+
+`.rahu/` is gitignored, so nothing was committed — but the test would have polluted a
+developer's working tree on every run.
+
+### Packaged binary
+
+Demo output unchanged; its trace now carries `turnIndex`, `degraded`,
+`excludedCandidates` and a proper `usage` object; `inspect` reads it as `COMPLETE` and
+preserves the nulls; `run --format json` reports `cost: null` for an unobserved cost.
+
+### NEW FINDING (not fixed here) — the offline run's footer is missing
+
+`rahu run` against `examples/offline.json` writes an answer to stdout and **nothing to
+stderr** — no routing line, no cost line — even though `renderJson`/`footer` both write
+to `err()`. Its trace contains only `RunStarted` + `RunTerminated`, so `inspect` reports
+no `route` and no `usage`.
+
+Verified pre-existing: built HEAD in a clean worktree and got byte-identical stdout/stderr
+to the working tree, so this increment did not cause it. It means the offline path never
+reaches the footer, which also explains why no test noticed the cost conflation through
+the CLI. Worth its own increment.
+
+### Still open
+
+- `confidenceField` remains an inert config key (AUDIT-e).

@@ -315,7 +315,12 @@ public final class RunCommand implements Callable<Integer> {
      * <p>Includes the typed status, and never content or snippets of a blocked input
      * (cli.md:48). A privacy block reports its category only.
      */
-    private String renderJson(TurnOutcome outcome) {
+    // Package-private (not private) so RunCommandTest can render a document with an
+    // OBSERVED cost. The offline engine records no usage, so the "reported as a
+    // number" half of the unobserved-vs-zero property is otherwise unreachable -
+    // and an encoding that always emits null would pass the other half while
+    // destroying the feature.
+    String renderJson(TurnOutcome outcome) {
         StringBuilder json = new StringBuilder();
         json.append("{\"status\":\"").append(jsonEscape(outcome.terminalReason()))
             .append("\",\"exitCode\":").append(outcome.exitCode())
@@ -342,18 +347,26 @@ public final class RunCommand implements Callable<Integer> {
         if (outcome.costUnobserved()) {
             json.append("null");
         } else {
+            // AUDIT-2026-10-03-j: same unobserved-as-zero conflation as the inspect
+            // report. summary.json is consumed by other tools, so a fabricated 0 here
+            // propagates further than the human-facing one did.
             json.append("{\"micros\":")
-                .append(outcome.usage().get().totalCostMicrosOpt().orElse(0L))
+                .append(orNull(outcome.usage().get().totalCostMicrosOpt()))
                 .append(",\"promptTokens\":")
-                .append(outcome.usage().get().promptTokensOpt().orElse(0))
+                .append(orNull(outcome.usage().get().promptTokensOpt()))
                 .append(",\"completionTokens\":")
-                .append(outcome.usage().get().completionTokensOpt().orElse(0))
+                .append(orNull(outcome.usage().get().completionTokensOpt()))
                 .append('}');
         }
         json.append(",\"generationSteps\":").append(outcome.generationSteps())
             .append(",\"runId\":").append(quoted(outcome.runId().orElse(null)))
             .append('}');
         return json.toString();
+    }
+
+    /** The value, or the JSON literal null when the provider never reported one. */
+    private static String orNull(java.util.Optional<?> value) {
+        return value.map(String::valueOf).orElse("null");
     }
 
     private static String quoted(String value) {
