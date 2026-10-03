@@ -325,4 +325,52 @@ class ReplayCaptureTest {
         assertTrue(dir != null, "cannot locate " + moduleRelative);
         return Files.readString(dir.resolve("src/main/java/" + moduleRelative));
     }
+
+    /**
+     * AUDIT-2026-10-03-h: the missing-capture error asserted a cause it never checked.
+     *
+     * <p>It always said "trace.capture=payloads is required", including for an
+     * operator whose config DID say payloads. That sends someone to edit a correct
+     * config, which is worse than a terse error. Both real causes are covered here:
+     * the mode never routed (offline), and it routed but did not capture.
+     */
+    @Test
+    @DisplayName("a missing capture blames capture, not the config, when the run did route")
+    void missingCaptureOnARoutedRunBlamesCapture() throws Exception {
+        Path run = root.resolve("routed");
+        Files.createDirectories(run);
+        // A run that routed but captured nothing: replay.json absent, RouteResolved
+        // present. The operator set payloads, so telling them to set payloads is wrong.
+        Files.writeString(run.resolve(TraceFiles.EVENTS),
+            "{\"type\":\"RouteResolved\",\"payload\":{}}\n");
+        var e = assertThrows(IOException.class, () -> ReplayCapture.read(run));
+        assertTrue(e.getMessage().contains("recorded RouteResolved"), e.getMessage());
+        assertTrue(e.getMessage().contains("not 'payloads' at run time"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("a missing capture on an UNROUTED run says routing, not the config")
+    void missingCaptureOnAnUnroutedRunSaysRouting() throws Exception {
+        Path run = root.resolve("unrouted");
+        Files.createDirectories(run);
+        // Offline: RunStarted + RunTerminated, no RouteResolved, so there were no
+        // routing inputs to capture and no amount of config would have produced them.
+        Files.writeString(run.resolve(TraceFiles.EVENTS),
+            "{\"type\":\"RunStarted\",\"payload\":{}}\n"
+            + "{\"type\":\"RunTerminated\",\"payload\":{}}\n");
+        var e = assertThrows(IOException.class, () -> ReplayCapture.read(run));
+        assertTrue(e.getMessage().contains("no RouteResolved"), e.getMessage());
+        assertTrue(e.getMessage().contains("necessary but not sufficient"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("with no events at all the message still avoids blaming the config alone")
+    void missingCaptureWithNoEventsIsStillHonest() throws Exception {
+        Path run = root.resolve("bare");
+        Files.createDirectories(run);
+        var e = assertThrows(IOException.class, () -> ReplayCapture.read(run));
+        // No evidence either way: say so rather than assert a cause.
+        assertFalse(e.getMessage().contains("is required for replay"), e.getMessage());
+        assertTrue(e.getMessage().contains("no capture at"), e.getMessage());
+    }
 }

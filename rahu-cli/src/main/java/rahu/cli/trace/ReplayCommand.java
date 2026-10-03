@@ -133,9 +133,13 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
             System.out.println("{\"status\":\"UNAVAILABLE\",\"reason\":" + quote(reason) + "}");
         } else {
             System.out.println("replay unavailable: " + reason);
-            System.out.println("Replay requires trace.capture=payloads; the default"
-                + " metadata capture records no routing inputs. Nothing was"
-                + " reconstructed or guessed.");
+            // AUDIT-2026-10-03-h: this second line repeated the unconditional blame
+            // even after `reason` had become specific, so the output contradicted
+            // itself - "offline routed nothing" immediately followed by "you need
+            // capture=payloads". The reason above is now cause-specific; this line
+            // states only what is true in every case.
+            System.out.println("Nothing was reconstructed or guessed: replay re-derives"
+                + " only from inputs this run actually recorded.");
         }
         return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
     }

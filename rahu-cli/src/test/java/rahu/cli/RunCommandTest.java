@@ -3,11 +3,14 @@ package rahu.cli;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertLinesMatch;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.io.PrintWriter;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -41,6 +44,31 @@ class RunCommandTest {
     private static final Path OFFLINE = RepoFile.of("examples/offline.json");
 
     private record Run(int code, String out, String err) {
+    }
+
+    /**
+     * A run plus whatever reached the real {@link System#out}.
+     *
+     * <p>{@code ReplayCommand} prints to {@code System.out} rather than to an injected
+     * {@code PrintWriter} (unlike {@code RunCommand}), so {@link #run} captures nothing
+     * for it. Without this, every assertion on replay's output silently passes on an
+     * empty string - which is how a self-contradicting message survived a full
+     * increment. Converting both trace commands to injected writers is recorded as
+     * AUDIT-2026-10-03-i; capturing the stream keeps this finding honest now.
+     */
+    private record Captured(int code, String systemOut, String err) {
+    }
+
+    private static Captured capturingSystemOut(java.util.function.Supplier<Run> body) {
+        PrintStream real = System.out;
+        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+        try {
+            System.setOut(new PrintStream(buffer, true, StandardCharsets.UTF_8));
+            Run r = body.get();
+            return new Captured(r.code(), buffer.toString(StandardCharsets.UTF_8), r.err());
+        } finally {
+            System.setOut(real);
+        }
     }
 
     private static Run run(String stdin, String... args) {
@@ -534,4 +562,146 @@ class RunCommandTest {
             offline().out().lines().toList());
     }
 
+    // ------------------------------------------------- config refusals (AUDIT-h)
+
+    /**
+     * AUDIT-2026-10-03-h, end-to-end proof at the command boundary.
+     *
+     * <p>A ConfigLoader test proves the config is refused; it does not prove the
+     * OPERATOR sees it. That gap is exactly where this defect lived: `config validate`
+     * printed "config valid" and exited 0 for a config whose payload capture was
+     * silently off, so every layer that only read the exit code called it healthy.
+     * These run the real command path and assert the message reaches stderr.
+     */
+    @Test
+    @DisplayName("a trace.capture typo is refused, naming the accepted values")
+    void traceCaptureTypoIsRefusedAtTheCommand() throws Exception {
+        Path cfg = Files.createTempFile("rahu-typo", ".json");
+        Files.writeString(cfg, Files.readString(OFFLINE).replace(
+            "\"capture\": \"metadata\"", "\"capture\": \"payload\""));
+        var r = run("", "config", "validate", "--config", cfg.toString());
+        assertNotEquals(0, r.code(),
+            "a capture typo must not exit 0: it silently disables replay capture "
+            + "while the operator's config claims payloads");
+        assertTrue(r.err.contains("trace.capture"), r.err);
+        // Actionable, not merely a rejection: without the accepted values the
+        // operator re-guesses the same near-miss spelling.
+        assertTrue(r.err.contains("metadata|payloads"), r.err);
+    }
+
+    /**
+     * observability.md:32 requires a persistence failure to STOP new operations
+     * (TRACE_FAILURE) and A16 forbids presenting completion for an incomplete run,
+     * so no continue-on-failure mode is permitted. `warn` was accepted and ignored:
+     * the operator asked for a degraded run and got a stopped one.
+     */
+    @Test
+    @DisplayName("trace.onFailure=warn is refused and says why")
+    void traceOnFailureWarnIsRefusedAtTheCommand() throws Exception {
+        Path cfg = Files.createTempFile("rahu-warn", ".json");
+        Files.writeString(cfg, Files.readString(OFFLINE).replace(
+            "\"onFailure\": \"stop\"", "\"onFailure\": \"warn\""));
+        var r = run("", "config", "validate", "--config", cfg.toString());
+        assertNotEquals(0, r.code(), "onFailure=warn has no implementation and no spec basis");
+        assertTrue(r.err.contains("trace.onFailure"), r.err);
+        assertTrue(r.err.contains("TRACE_FAILURE"), r.err);
+    }
+
+    /**
+     * The positive control, and the reason the two refusals above mean anything:
+     * the SAME command with the value spelled correctly still succeeds. Without
+     * this, a validate that always exited nonzero would satisfy both tests.
+     */
+    @Test
+    @DisplayName("the correctly spelled values still load, so the refusals are specific")
+    void validTraceSpellingsStillLoad() throws Exception {
+        Path cfg = Files.createTempFile("rahu-ok", ".json");
+        Files.writeString(cfg, Files.readString(OFFLINE).replace(
+            "\"capture\": \"metadata\"", "\"capture\": \"payloads\""));
+        var r = run("", "config", "validate", "--config", cfg.toString());
+        assertEquals(0, r.code(), r.err);
+        // And the accepted value actually reached the config, rather than being
+        // replaced by the default on the way through.
+        assertEquals("payloads", new ConfigLoader().load(cfg).trace().capture());
+    }
+
+    /**
+     * AUDIT-2026-10-03-h: nothing drove `rahu replay`, so its UNAVAILABLE output was
+     * never asserted and could contradict itself for a full increment - "offline routed
+     * nothing" on one line, "you need capture=payloads" on the next. Both were true
+     * strings in the output, which is why grepping for either would have passed.
+     */
+    @Test
+    @DisplayName("replay's UNAVAILABLE output does not contradict its own reason")
+    void replayUnavailableOutputIsSelfConsistent() throws Exception {
+        // A dedicated trace root, not a shared one: the run directory is found from
+        // the id the run reports, so the root must be this test's alone.
+        Path traceRoot = Files.createTempDirectory("rahu-replay-traces");
+        Path cfg = Files.createTempFile("rahu-replay", ".json");
+        Files.writeString(cfg, Files.readString(OFFLINE)
+            .replace("\"capture\": \"metadata\"", "\"capture\": \"payloads\"")
+            .replace("\"directory\": \".rahu/runs\"",
+                "\"directory\": \"" + traceRoot + "\""));
+        // Produce a real offline run, then ask replay about it.
+        var run = run("", "run", "--config", cfg.toString(), "--prompt", "a task",
+            "--input-classification", "approved-nonsensitive", "--format", "json");
+        assertEquals(0, run.code(), run.err());
+        // Take the runId from the run itself rather than constructing the directory:
+        // the reported id is the contract (AUDIT-g proved it resolves on disk), so a
+        // test that guessed the naming would pass while the real linkage broke.
+        String runId = new ObjectMapper().readTree(run.out).path("runId").asText();
+        assertFalse(runId.isBlank() || "null".equals(runId),
+            "run must report a real runId: " + run.out);
+
+        Path runDirectory = traceRoot.resolve(runId);
+        assertTrue(Files.isDirectory(runDirectory),
+            "the reported runId must resolve to a real trace directory: " + runDirectory);
+        // BOTH surfaces, not just JSON: the human-readable branch is a separate code
+        // path in `unavailable()` and prints a SECOND line that JSON mode never shows.
+        // Asserting only the JSON output left the human branch entirely untested -
+        // which is exactly how the contradiction survived a full increment.
+        //
+        // `ReplayCommand` writes to System.out rather than an injected PrintWriter
+        // (unlike RunCommand), so `run(...)` captures nothing for it. Capture the real
+        // stream; converting both trace commands to injected writers is recorded as
+        // AUDIT-2026-10-03-i rather than smuggled in here.
+        for (String mode : new String[] {"json", "text"}) {
+            Captured replay = capturingSystemOut(
+                () -> run("", "replay", "--format", mode, runDirectory.toString()));
+            assertEquals(3, replay.code(),
+                "UNAVAILABLE must be a distinct exit code, not a success (" + mode + "): "
+                    + replay.systemOut() + replay.err());
+            // The reason must be the SPECIFIC one for an offline run.
+            assertTrue(replay.systemOut().contains("no RouteResolved"),
+                mode + " stdout was: <" + replay.systemOut() + "> stderr: " + replay.err());
+            // Every line must agree with that reason.
+            //
+            // Asserted as a PROPERTY rather than a banned phrase: the earlier version
+            // banned the exact string "capture=payloads is required", and restoring the
+            // original defect - which read "Replay requires trace.capture=payloads; ..."
+            // - SURVIVED that assertion. Banning wording is fragile; the property is
+            // that no line may advise changing trace.capture, since this run's config
+            // already had it right. Every mention must be the qualified one.
+            for (String line : replay.systemOut().split("\n")) {
+                if (line.contains("capture=payloads")) {
+                    assertTrue(line.contains("necessary but not sufficient"),
+                        "a line advises changing trace.capture on a run whose config "
+                            + "already set it (" + mode + "): " + line);
+                }
+                assertFalse(line.contains("Run a chat turn with"),
+                    "the output gives unachievable advice in " + mode + ": " + line);
+                assertFalse(line.contains("Run a chat turn first"),
+                    "the output gives unachievable advice in " + mode + ": " + line);
+            }
+            // And exactly one line of advice, so a future line cannot quietly reappear
+            // beside it.
+            long advice = replay.systemOut().lines()
+                .filter(l -> l.contains("capture=payloads")
+                    || l.contains("Run a chat turn")).count();
+            assertTrue(advice <= 1,
+                "at most one line may mention the capture flag (" + mode + "), got: "
+                    + replay.systemOut());
+        }
+
+    }
 }

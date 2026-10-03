@@ -1021,3 +1021,113 @@ stream. 427 tests green.
 - `trace.onFailure` remains parsed-but-unread.
 - `confidenceField` remains an inert config key (AUDIT-e).
 - `DemoCommand` still hand-builds its trace.
+
+
+---
+
+## AUDIT-2026-10-03-h — `trace.onFailure`, and a refusal I had to talk myself out of
+
+G06's last two "parsed-but-unread" keys. The register recorded these as one item; they
+are three defects with three different shapes, and one of them I nearly fixed in the
+wrong direction.
+
+### `capture="payload"` loaded clean, and that is a silent loss of guarantee
+
+`bindTrace` accepted any string. `TurnTrace.payloadsEnabled` compares against
+`"payloads"`, so a one-character typo went false — no replay inputs written — while the
+operator's config said payloads. The failure mode is unusually well-camouflaged:
+`replay` then reported UNAVAILABLE, which is *honest*, and nothing anywhere said the
+config was wrong. An honest tool downstream cannot compensate for a wrong input
+upstream. Now refused at load, naming both accepted values and what the typo would have
+caused.
+
+### `onFailure: warn` — and the refusal I argued myself out of
+
+The schema advertised `stop|warn`; nothing read either. The obvious "fix" is to
+implement `warn`. That would have been wrong.
+
+`observability.md:32` requires that a persistence failure "stops new operations with
+TRACE_FAILURE", and A16 requires stopping and never inventing completion. A
+continue-on-failure mode lets a run present an answer whose trace never reached disk —
+precisely the failure this subsystem exists to prevent. There is no spec basis for
+`warn`; the enum value was an aspiration.
+
+So it is **refused with the reasoning attached**, and removed from the schema
+(`enum` → `const`). A key the spec forbids must not be advertised by our own artifact:
+while the schema offered it, every editor and validator suggested a config that cannot
+load. This is the one place in this audit where the correct fix was to *remove*
+capability, and it is worth being explicit that removing it is the safer choice.
+
+### The error message asserted a cause it had not checked
+
+`ReplayCapture.read` said "trace.capture=payloads is required" — unconditionally, for
+any missing capture. For an operator who had *already set payloads* that is an
+instruction to edit a correct config. The true cause can be that the mode never routed
+(offline records no `RouteResolved`), so the message now reads the trace and
+distinguishes: routed-but-uncaptured, versus unrouted. And `ReplayCommand` printed a
+*second* line repeating the unconditional blame, so the output contradicted itself —
+"offline routed nothing" immediately followed by "you need capture=payloads".
+
+### How this survived a green suite: three separate reasons
+
+Worth recording, because each would independently hide it.
+
+**Nothing asserted the *effect*.** `ConfigLoaderTest` had one trace line in a fixture
+and asserted nothing about it. Asserting "a bad value does not throw" passes whether the
+loader refuses the value or silently accepts it — the inert-config defect again.
+
+**Nothing drove `replay` at all.** No test executed the command. Its entire output
+surface was unasserted.
+
+**`ReplayCommand` prints to `System.out`, not an injected writer.** Unlike
+`RunCommand`, it never had a `PrintWriter`, so `run(...)` captured *nothing* — every
+assertion on its output would have passed on an empty string. I only found this because
+a mutation survived that should not have. Converting both trace commands to injected
+writers is AUDIT-2026-10-03-i; until then the test captures the real stream, with the
+reason recorded in the helper.
+
+### A banned phrase is not a property
+
+My first fix asserted the output did not contain `"capture=payloads is required"`.
+Restoring the original defect — which read *"Replay requires trace.capture=payloads; the
+default metadata capture…"* — **survived**, because the wording differs. The assertion
+was pinned to a string rather than to the property.
+
+Replaced with the property: any line mentioning `capture=payloads` must carry the
+qualifier "necessary but not sufficient", and at most one line may mention the flag at
+all. That kills both the original wording and any future variant. The general rule:
+*ban a behaviour, not a spelling* — a phrase ban only catches the exact phrase you
+remembered.
+
+### Proof
+
+Mutation battery (74 tests), every defect restored verbatim, all caught:
+
+| Restored defect | Failures |
+|---|---|
+| cause branches swapped | 5 |
+| capture dropped on the way through | 3 + 4 errors |
+| replay never inspects the trace | 3 |
+| capture typo accepted | 2 |
+| `onFailure=warn` accepted | 2 |
+| explanation stripped from the message | 1 |
+| schema re-advertises `warn` | 1 |
+| contradictory second line restored | 1 |
+
+One existing assertion had to be corrected: `ReplayEndToEndTest` asserted the message
+contains `"trace.capture=payloads"`, which was true only because the error named that
+cause unconditionally. It now asserts the *specific* cause, and separately verifies the
+trace really recorded `RouteResolved`, so the message's claim rests on evidence the test
+checks.
+
+Packaged binary: a capture typo and `onFailure=warn` both exit 2 with actionable
+reasons; the correctly spelled `payloads` still exits 0; offline replay's text and JSON
+output agree and neither tells the operator to change a correct config. 438 tests green.
+
+### Still open
+
+- **AUDIT-2026-10-03-i:** `ReplayCommand` and `TraceInspectCommand` print to
+  `System.out`/`System.err` instead of injected writers, so their output is only
+  assertable by capturing the real stream.
+- `DemoCommand` still hand-builds its trace rather than using `RunTracer`.
+- `confidenceField` remains an inert config key (AUDIT-e).

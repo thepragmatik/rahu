@@ -238,7 +238,21 @@ class ReplayEndToEndTest {
         // And the honest consequence: replay is unavailable rather than fabricated.
         IOException e = assertThrows(IOException.class,
             () -> ReplayCapture.read(turn.runDirectory()));
-        assertTrue(e.getMessage().contains("trace.capture=payloads"), e.getMessage());
+
+        // AUDIT-2026-10-03-h: this asserted the message contains
+        // "trace.capture=payloads", which was true only because the old error named
+        // that cause UNCONDITIONALLY. It is the wrong claim here: this run DID route
+        // and its capture was OFF BY CONFIG, so the message must say so, and must not
+        // read as though a different cause were in play. An error that always blames
+        // one cause teaches the reader to distrust all of them.
+        assertTrue(e.getMessage().contains("recorded RouteResolved"), e.getMessage());
+        assertTrue(e.getMessage().contains("not 'payloads' at run time"), e.getMessage());
+        // The cause was decidable only because this run's trace recorded
+        // RouteResolved; assert that, so the message's claim rests on evidence the
+        // test itself verifies rather than on the error text alone.
+        assertTrue(Files.readString(turn.runDirectory().resolve("events.jsonl"))
+            .contains("RouteResolved"),
+            "this scenario requires a run that routed, otherwise the cause differs");
     }
 
     @Test

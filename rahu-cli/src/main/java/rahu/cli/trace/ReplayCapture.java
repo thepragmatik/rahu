@@ -168,8 +168,39 @@ public final class ReplayCapture {
     public static Frozen read(Path runDirectory) throws java.io.IOException {
         Path file = runDirectory.resolve(FILE);
         if (!Files.isRegularFile(file)) {
+            // AUDIT-2026-10-03-h: this used to assert the cause unconditionally -
+            // "trace.capture=payloads is required" - for a run whose config DID say
+            // payloads. The true reason can be that the mode never routes (offline
+            // records no RouteResolved and captures no inputs), and telling an
+            // operator who already set the flag to set it again is worse than saying
+            // nothing: it sends them to edit a correct config.
+            //
+            // So state the OBSERVED fact, list the possible causes, and let the trace
+            // itself discriminate: a payloads run writes replay.json, so its absence
+            // alongside a RouteResolved event means capture did not happen.
+            boolean routed = false;
+            Path events = runDirectory.resolve(TraceFiles.EVENTS);
+            if (Files.isRegularFile(events)) {
+                try {
+                    for (String line : Files.readAllLines(events)) {
+                        if (line.contains("\"RouteResolved\"")) {
+                            routed = true;
+                            break;
+                        }
+                    }
+                } catch (java.io.IOException ignored) {
+                    // Unreadable events.jsonl: fall through to the generic message
+                    // rather than guess.
+                }
+            }
             throw new java.io.FileNotFoundException("no capture at " + file
-                + " (trace.capture=payloads is required for replay)");
+                + (routed
+                    ? "; this run recorded RouteResolved, so trace.capture was not"
+                      + " 'payloads' at run time (a later config change does not"
+                      + " apply to an existing run)"
+                    : "; this run recorded no RouteResolved, so it had no routing"
+                      + " inputs to capture (offline mode routes nothing) -"
+                      + " trace.capture=payloads is necessary but not sufficient"));
         }
         JsonNode root = MAPPER.readTree(file.toFile());
         int version = root.path("schemaVersion").asInt(-1);

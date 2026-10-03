@@ -1,6 +1,7 @@
 package rahu.cli.config;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -203,5 +204,78 @@ class ConfigLoaderTest {
             "\"id\": \"${RAHU_TEST_MODEL}\""));
         ConfigError e = assertThrows(ConfigError.class, () -> new ConfigLoader().load(withEnv));
         assertTrue(e.getMessage().contains("RAHU_TEST_MODEL"));
+    }
+
+    /**
+     * AUDIT-2026-10-03-h. A trace enum typo must be REFUSED, not accepted-and-ignored.
+     *
+     * <p>Asserting only that a bad value "does not throw" is the defect this test exists
+     * to prevent: it passes whether the loader refuses the value or silently downgrades
+     * an observability guarantee. So each case asserts the REFUSAL and the reason, and
+     * the positive case asserts the value reached the config.
+     */
+    @Test
+    @DisplayName("a trace.capture typo is refused, not silently downgraded to metadata")
+    void traceCaptureTypoIsRefused() throws Exception {
+        // "payload" is one character from "payloads" and was accepted verbatim, which
+        // turned payload capture OFF while the operator's config said it was ON. The
+        // downstream `replay` then reported UNAVAILABLE - honest, and still a silent
+        // loss of the guarantee, because nothing said the config was wrong.
+        Path p = write(VALID_CONFIG.replace("\"capture\": \"metadata\"",
+            "\"capture\": \"payload\""));
+        ConfigError e = assertThrows(ConfigError.class, () -> new ConfigLoader().load(p));
+        assertTrue(e.getMessage().contains("trace.capture"), e.getMessage());
+        // The accepted values must be NAMED, or the operator re-guesses the same
+        // near-miss spelling; and the message must say what the typo WOULD have
+        // caused, because "rejected" alone does not tell them the config was
+        // previously accepted and silently degraded their capture.
+        assertTrue(e.getMessage().contains("metadata|payloads"), e.getMessage());
+        assertTrue(e.getMessage().contains("silently disable"), e.getMessage());
+        assertTrue(e.getMessage().contains("UNAVAILABLE"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("trace.capture is metadata by default and payloads when asked")
+    void traceCaptureReachesTheConfig() throws Exception {
+        assertEquals("metadata", new ConfigLoader().load(write(VALID_CONFIG))
+            .trace().capture());
+        Path on = write(VALID_CONFIG.replace("\"capture\": \"metadata\"",
+            "\"capture\": \"payloads\""));
+        assertEquals("payloads", new ConfigLoader().load(on).trace().capture());
+    }
+
+    /**
+     * observability.md:32 requires a persistence failure to STOP new operations, and
+     * A16 forbids presenting completion for a run whose trace is incomplete. So
+     * `onFailure: warn` promised a degraded mode the spec does not permit. It is
+     * refused with an explanation rather than accepted and ignored, which is what
+     * happened: an operator asking for warn got stop, and the schema advertised a
+     * capability that no code implemented.
+     */
+    @Test
+    @DisplayName("trace.onFailure=warn is refused: the spec has no continue-on-failure mode")
+    void traceOnFailureWarnIsRefused() throws Exception {
+        Path p = write(VALID_CONFIG.replace("\"onFailure\": \"stop\"",
+            "\"onFailure\": \"warn\""));
+        ConfigError e = assertThrows(ConfigError.class, () -> new ConfigLoader().load(p));
+        assertTrue(e.getMessage().contains("trace.onFailure"), e.getMessage());
+        assertTrue(e.getMessage().contains("TRACE_FAILURE"), e.getMessage());
+    }
+
+    @Test
+    @DisplayName("the published schema does not advertise a value the loader refuses")
+    void schemaDoesNotAdvertiseRefusedValues() throws Exception {
+        // A schema that offers `warn` while the loader refuses it makes every editor
+        // and validator suggest a config that cannot load. The schema is a promise
+        // about what the loader accepts, so the two must agree in that direction.
+        Path root = Path.of(System.getProperty("user.dir"));
+        if (!root.resolve("docs").toFile().exists()) {
+            root = root.getParent();
+        }
+        String schema = Files.readString(
+            root.resolve("docs/generated/config.schema.json"));
+        assertFalse(schema.contains("\"warn\""),
+            "config.schema.json still advertises trace.onFailure=warn, which "
+            + "ConfigLoader refuses; regenerate with SchemaGenerator");
     }
 }

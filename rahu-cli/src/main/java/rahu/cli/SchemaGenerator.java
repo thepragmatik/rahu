@@ -104,7 +104,7 @@ public final class SchemaGenerator {
                   "properties": {
                     "directory": {"type": "string"},
                     "capture": {"enum": ["metadata", "payloads"]},
-                    "onFailure": {"enum": ["stop", "warn"]}
+                    "onFailure": {"const": "stop"}
                   }
                 },
                 "privacy": {

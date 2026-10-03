@@ -316,14 +316,47 @@ public final class ConfigLoader {
             n.path("resultBytes").asInt(65536));
     }
 
+    /**
+     * Trace config, with both enum keys refused at load.
+     *
+     * <p>AUDIT-2026-10-03-h: both keys were accepted verbatim. {@code capture="payload"}
+     * (one s) loaded clean, so {@code payloadsEnabled} went false, no replay input was
+     * written, and a later {@code replay} honestly reported UNAVAILABLE - while the
+     * operator's config said payloads. The failure mode is a typo that silently
+     * downgrades an observability guarantee, and it is invisible because the tool that
+     * depends on it is honest about being unable to help.
+     *
+     * <p>{@code onFailure} is accepted only as {@code stop}. The key used to accept
+     * {@code warn} and then ignore it, so an operator who asked for a degraded run got
+     * a stopped one. {@code warn} is not merely unimplemented: observability.md:32
+     * requires that a persistence failure "stops new operations with TRACE_FAILURE",
+     * and A16 requires stopping and never inventing completion. A continue-on-failure
+     * mode would let a run present an answer whose trace never reached disk, which is
+     * the A16 failure this subsystem exists to prevent. It is therefore refused with an
+     * explanation rather than accepted and ignored - a key the spec forbids must not be
+     * advertised by our own schema.
+     */
     private RahuConfig.TraceConfig bindTrace(JsonNode n) {
         if (n == null) {
             throw new ConfigError("trace section required");
         }
+        String capture = n.path("capture").asText("metadata");
+        if (!capture.equals("metadata") && !capture.equals("payloads")) {
+            throw new ConfigError("trace.capture must be metadata|payloads, got \""
+                + capture + "\"; a typo would silently disable replay-input capture, "
+                + "so `replay` would report UNAVAILABLE for a run the operator "
+                + "believed was replayable");
+        }
+        String onFailure = n.path("onFailure").asText("stop");
+        if (!onFailure.equals("stop")) {
+            throw new ConfigError("trace.onFailure must be stop, got \"" + onFailure
+                + "\"; observability.md requires a trace persistence failure to stop "
+                + "new operations (TRACE_FAILURE) and A16 forbids presenting "
+                + "completion for a run whose trace is incomplete, so there is no "
+                + "continue-on-failure mode to select");
+        }
         return new RahuConfig.TraceConfig(
-            n.path("directory").asText(".rahu/runs"),
-            n.path("capture").asText("metadata"),
-            n.path("onFailure").asText("stop"));
+            n.path("directory").asText(".rahu/runs"), capture, onFailure);
     }
 
     private RahuConfig.ContextConfig bindContext(JsonNode n) {

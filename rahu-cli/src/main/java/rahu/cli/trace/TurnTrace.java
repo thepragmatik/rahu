@@ -100,9 +100,13 @@ public final class TurnTrace {
      *
      * <p>Only the exact value "payloads" enables it. An unrecognised value is not
      * treated as off: a typo must not silently downgrade a run to metadata-only,
-     * because the operator then believes a replayable trace exists. Unknown values
-     * are refused at config load; this is the second line for a config built in
-     * code rather than parsed from JSON.
+     * because the operator then believes a replayable trace exists.
+     *
+     * <p>AUDIT-2026-10-03-h: that sentence used to claim "unknown values are refused
+     * at config load" while {@code bindTrace} accepted any string, so the claim named
+     * a check that did not exist and {@code capture="payload"} silently disabled
+     * capture. {@code ConfigLoader.bindTrace} now refuses it for real; this remains
+     * the second line for a config built in code rather than parsed from JSON.
      */
     public boolean payloadsEnabled() {
         return payloadsEnabled;
