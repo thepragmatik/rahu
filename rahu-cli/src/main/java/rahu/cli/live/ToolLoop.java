@@ -195,6 +195,19 @@ public final class ToolLoop {
         executedCalls.clear();
         injectionJudgments.clear();
         lastRerank = null;
+        // The NO_PROGRESS streak is per-TURN, not per-session, so it resets here with
+        // the rest of the per-turn state. It was not, and that was a real defect
+        // (AUDIT-2026-10-03-z): `rahu chat` reuses ONE ToolLoop for the whole session,
+        // so a two-batch streak left by turn 1 was still standing when turn 2 began,
+        // and the first repeat in turn 2 hit three and killed a turn that was doing
+        // fresh work. A27 requires "a new user turn resets the streak".
+        //
+        // The detector is stateful by design - it must survive CONTEXT COMPACTION
+        // within a turn, which is why it lives outside the conversation - but the turn
+        // boundary is a real boundary. Those are different lifetimes and conflating them
+        // breaks the acceptance clause; a later run can no longer be no-progress merely
+        // because an earlier, unrelated one repeated itself.
+        noProgress.newTurn();
         // permittedThisTurn is deliberately NOT reset here: the driver narrows before
         // calling generate, so clearing it here would discard the judgment the turn
         // just made. A turn with no judgment leaves it null, which means the full set.

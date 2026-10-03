@@ -2966,3 +2966,98 @@ from a hard refusal to `config valid: mode=live, routing=shadow` once the four d
 variables are set.
 
 528 → **531 tests green** (184 core / 21 openrouter / 36 systemone / 290 cli).
+
+
+---
+
+## AUDIT-2026-10-03-z — A27: the NO_PROGRESS streak outlived the turn it belonged to
+
+A27 has three required results. Two were covered; the third was implemented but never
+reached.
+
+| A27 clause | covered? |
+|---|---|
+| `NO_PROGRESS` after the third identical batch | yes — `NoProgressDetectorTest` + `ToolLoopNoProgressTest` |
+| a different new observation resets the streak | yes — 7 tests |
+| **a new user turn resets the streak** | **no — `newTurn()` was unreachable from a turn boundary** |
+
+### The defect
+
+`NoProgressDetector` is per-turn state. `ToolLoop.generate()` resets every other per-turn
+field on entry:
+
+```java
+executedCalls.clear();
+injectionJudgments.clear();
+lastRerank = null;
+queryText = lastUserText(messages);
+```
+
+and pointedly **not** `noProgress`. Meanwhile `noProgress.newTurn()` is called from exactly
+one place in production — `ToolLoop.java:246`, the **step-limit exit**, which returns a
+failure. So the only caller was on a path that ends the turn anyway; nothing reset the
+detector when a turn actually *began*.
+
+That is harmless in `rahu run` (one turn, fresh `ToolLoop`). It is wrong in **`rahu chat`**:
+`ChatCommand.runLive` builds the assembly **once** for the whole session, and
+`LiveTurnDriver` holds the `ToolLoop` as a `private final` field, so one loop instance
+serves every user turn.
+
+Consequence: a two-batch streak left by turn 1 was still standing when turn 2 began. The
+first repeat in turn 2 reached three and terminated a turn doing **fresh, unrelated work**,
+reported to the operator as `no progress: a tool call repeated with an unchanged outcome`.
+A user asking a new question got a false stall diagnosis, and — worse — a legitimate second
+attempt at the same call was indistinguishable from a stuck loop.
+
+### Reproduced, not argued
+
+`newUserTurnResetsTheStreak` drives one shared `ToolLoop` across two `generate()` calls:
+turn 1 makes two identical batches then answers (streak 2); turn 2 makes two then answers.
+Before the fix:
+
+```
+AssertionFailedError: the guard fired on turn 2 because turn 1's streak was never
+cleared. A new user turn is new work: A27 requires the streak to reset, so two
+repeats in a fresh turn must NOT be reported as no progress.
+```
+
+### The fix, and the distinction it turns on
+
+`noProgress.newTurn()` now sits at the top of `generate()` beside the other per-turn
+resets. The non-obvious part is that this does **not** weaken the "compaction cannot erase
+it" property: those are two different lifetimes, and the class comment claims both.
+
+- **Within a turn**, the detector must survive context compaction — that is why it lives
+  outside the conversation. Preserved: compaction happens mid-`generate()`, and nothing in
+  the new reset runs between rounds.
+- **Between turns**, the streak is meaningless. A user's new message is a new task.
+
+Conflating them is what broke A27. I noted this in the code rather than leaving the reset
+looking like a shortcut past the compaction guarantee.
+
+### Mutation-tested, with attribution
+
+Attribution is the point here — a test that fails on every mutation proves nothing.
+
+| mutation | failing test |
+|---|---|
+| fix reverted (streak session-scoped) | `newUserTurnResetsTheStreak` **only** |
+| guard disabled (`if (false && …)`) | `repeatedCallTerminatesBeforeTheStepCap` **only** |
+| whole guard block deleted | `repeatedCallTerminatesBeforeTheStepCap` only |
+| restored | green |
+
+Each mutation is caught by exactly the test that owns that behaviour, and the new test does
+**not** fire when the guard is merely disabled — so it is not detecting "the guard is off",
+it is detecting "the streak crossed a turn boundary".
+
+### One self-inflicted failure worth recording
+
+My first version of the test asserted `provider.batch == 2` for turn 1 and got 3. The
+counter incremented per *generation*, including the final answering call, so it counted
+requests rather than tool batches. The detector only ever sees tool batches. I split it into
+`generations` and `batch` rather than loosening the assertion — the count is the thing
+under test, so relaxing it would have destroyed the test.
+
+`clean verify` on a **fresh clone**: 184/21/36/291, BUILD SUCCESS.
+
+531 → **532 tests green**.
