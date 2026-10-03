@@ -171,3 +171,74 @@ accepted-and-ignored fields, and prevents the class from recurring.
 
 `rahu-core` is JDK-only by architecture, so the client needs a small local JSON
 encoder with no new dependency.
+
+---
+
+## AUDIT-2026-10-03-a — G06 is recorded as PASSED, but no live turn writes a trace
+
+Found while building the inert-key detector. Severity: **HIGH**. Status: **OPEN**.
+This supersedes the G06 row in `dogfood-release.md`.
+
+### The claim
+
+`dogfood-release.md` line 54 records:
+
+> | G06 Traces/replay | PASSED | `TraceWriterTest`, `ReplayEngineTest`; A11, A16 |
+
+### The evidence against it
+
+The detector reads every `RahuConfig` record component and looks for a production
+accessor call. `trace.directory`, `trace.capture` and `trace.onFailure` have zero.
+That led to a larger question, and the answer is worse than an inert key.
+
+1. **Nothing in `main` constructs a `TraceWriter`.** `grep -rn "new TraceWriter"
+   --include=*.java */src/main/java` returns nothing. The only constructor is its own
+   definition at `rahu-cli/.../trace/TraceWriter.java:28`.
+2. **Nothing in `main` references `TraceWriter`, `TraceReader`, `ReplayEngine` or
+   `TraceEvent`** outside the `rahu.cli.trace` package itself. The subsystem is
+   self-contained and unreachable.
+3. **`LiveTurnDriver` contains the string "trace" zero times** (case-sensitive count
+   over the whole file).
+4. **A real turn writes no trace.** Ran `rahu chat` with
+   `examples/offline.json`, stdin `what is this project`, then `/exit`. Exit code 0,
+   a real answer printed. File count under `.rahu/runs` was **4 before and 4 after**.
+5. **The only traces on disk are demo-shaped and synthetic.** All four existing
+   `events.jsonl` files carry `"configHash":"synthetic"` and
+   `"catalogHash":"synthetic"`, and all four have mtimes of Oct 1-2 — none from any
+   chat turn.
+
+`DemoCommand` does write a trace, but it does not use the subsystem. It hand-builds
+a `StringBuilder` of four hardcoded events with fixed values and calls
+`Files.writeString`. It also hardcodes `.rahu/runs/<uuid>` rather than reading
+`trace.directory`, which is why `trace.directory` is inert even for the one command
+that produces a trace.
+
+### Why this is worse than the inert-key class
+
+`tools.enabled` was a documented key with no effect. This is the whole G06
+deliverable with no effect. The gate policy says "trace failure cannot become
+success", and the recorded status is PASSED on the strength of two unit tests
+whose subject production code never calls.
+
+This is the **sixth** instance of the same root cause, and the largest so far:
+`ValidScore`, `tools.enabled`, `tools.exclusions`, `tools.resultBytes`,
+`confidenceField`, and now `TraceWriter`.
+
+### Correcting the record
+
+G06 must read **BUILT, NOT WIRED** until a live turn demonstrably writes a trace and
+`ReplayEngine` reads one back. `TraceWriterTest` and `ReplayEngineTest` remain true
+statements about the subsystem; they are simply not evidence about the product.
+
+I have not yet fixed this. The fix is a real piece of work: construct a `TraceWriter`
+from `trace.directory` in `LiveTurnDriver`, emit `RunStarted` / `RouteResolved` /
+`ModelCompleted` / `RunTerminated` from the real values the driver already holds,
+honour `trace.capture` and `trace.onFailure`, and make `DemoCommand` use the
+subsystem instead of its hand-built string. It needs its own red-then-green
+proof, and the proof must be a **turn that writes a file**, not a unit test.
+
+### Process note
+
+The inert-key detector found this as a side effect, not as a target. That is the
+argument for building the detector rather than fixing the known list: the known list
+had twelve entries and did not include this.
