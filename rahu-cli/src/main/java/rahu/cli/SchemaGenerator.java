@@ -45,9 +45,66 @@ public final class SchemaGenerator {
                 (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(schemaJson);
             root.put("additionalProperties", false);
             closeFixedKeyObjects(root.get("properties"));
+            applyOperationalDefaults(root.get("properties"));
             return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalStateException("config schema literal is not valid JSON", e);
+        }
+    }
+
+    /**
+     * Writes each operational default into the schema.
+     *
+     * <p>AUDIT-2026-10-03-af. The schema carried no {@code default} at all, so a field the
+     * loader treats as optional was, to anyone reading the schema, a field of unknown value.
+     * The defaults live in {@link rahu.cli.config.OperationalDefaults} precisely so they can
+     * be read from one place here instead of being retyped into a JSON literal - a literal
+     * copy would be exactly the drift this audit is about.
+     */
+    private static void applyOperationalDefaults(
+        com.fasterxml.jackson.databind.JsonNode properties) {
+        var defaults = new java.util.LinkedHashMap<String, Object>();
+        defaults.put("/context/maxPromptTokens",
+            rahu.cli.config.OperationalDefaults.CONTEXT_ALLOWANCE_TOKENS);
+        defaults.put("/routing/maximumCandidates",
+            rahu.cli.config.OperationalDefaults.MAX_CANDIDATES);
+        defaults.put("/routing/confidenceFloor",
+            rahu.cli.config.OperationalDefaults.CONFIDENCE_FLOOR);
+        defaults.put("/agent/maxCompletionTokens",
+            rahu.cli.config.OperationalDefaults.MAX_COMPLETION_TOKENS);
+        defaults.put("/agent/maxCostUsd",
+            rahu.cli.config.OperationalDefaults.MAX_COST_USD);
+        defaults.put("/tools/resultBytes",
+            rahu.cli.config.OperationalDefaults.TOOL_RESULT_BYTES);
+        defaults.put("/search/maxCandidates",
+            rahu.cli.config.OperationalDefaults.RERANK_CANDIDATES);
+
+        for (var entry : defaults.entrySet()) {
+            String[] steps = entry.getKey().substring(1).split("/");
+            var node = properties;
+            for (int i = 0; i < steps.length - 1; i++) {
+                node = node.path(steps[i]).path("properties");
+            }
+            var target = node.path(steps[steps.length - 1]);
+            if (target.isMissingNode()) {
+                throw new IllegalStateException(
+                    "no schema property at " + entry.getKey() + "; OperationalDefaults and the "
+                        + "schema literal have drifted apart");
+            }
+            // put() has no Object overload, and the values are deliberately mixed
+            // (Integer, Double, BigDecimal), so each is converted to its JSON node type
+            // rather than stringified - a stringified 65536 would be rejected by an editor.
+            Object v = entry.getValue();
+            com.fasterxml.jackson.databind.JsonNode value = v instanceof Integer i
+                ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.numberNode(i)
+                : v instanceof Double d
+                    ? com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.numberNode(d)
+                    : v instanceof java.math.BigDecimal b
+                        ? com.fasterxml.jackson.databind.node.JsonNodeFactory
+                            .instance.numberNode(b)
+                        : com.fasterxml.jackson.databind.node.JsonNodeFactory.instance
+                            .textNode(String.valueOf(v));
+            ((com.fasterxml.jackson.databind.node.ObjectNode) target).set("default", value);
         }
     }
 

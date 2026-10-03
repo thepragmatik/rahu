@@ -79,12 +79,14 @@
         "confidenceFloor" : {
           "type" : "number",
           "minimum" : 0,
-          "maximum" : 1
+          "maximum" : 1,
+          "default" : 0.0
         },
         "maximumCandidates" : {
           "type" : "integer",
           "minimum" : 1,
-          "maximum" : 32
+          "maximum" : 32,
+          "default" : 32
         }
       },
       "additionalProperties" : false
@@ -166,7 +168,8 @@
         },
         "resultBytes" : {
           "type" : "integer",
-          "minimum" : 1
+          "minimum" : 1,
+          "default" : 65536
         }
       },
       "additionalProperties" : false
@@ -215,7 +218,8 @@
         },
         "maxPromptTokens" : {
           "type" : "integer",
-          "minimum" : 1
+          "minimum" : 1,
+          "default" : 8192
         },
         "routerStateBytes" : {
           "type" : "integer",
@@ -237,11 +241,13 @@
         },
         "maxCostUsd" : {
           "type" : "string",
-          "pattern" : "^\\d+(\\.\\d{1,4})?$"
+          "pattern" : "^\\d+(\\.\\d{1,4})?$",
+          "default" : 0
         },
         "maxCompletionTokens" : {
           "type" : "integer",
-          "minimum" : 1
+          "minimum" : 1,
+          "default" : 2048
         },
         "maxCompactions" : {
           "type" : "integer",
@@ -294,7 +300,8 @@
         "maxCandidates" : {
           "type" : "integer",
           "minimum" : 1,
-          "maximum" : 1000
+          "maximum" : 1000,
+          "default" : 20
         }
       },
       "additionalProperties" : false

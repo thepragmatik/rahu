@@ -296,7 +296,9 @@ public final class ConfigLoader {
             throw new ConfigError(
                 "search.mode must be off|shadow|enforce, got \"" + m + "\"");
         }
-        Integer max = n.has("maxCandidates") ? n.get("maxCandidates").asInt() : 20;
+        // AUDIT-2026-10-03-af: 20 was also written literally in ToolLoop; one source now.
+        Integer max = n.has("maxCandidates") ? n.get("maxCandidates").asInt()
+            : OperationalDefaults.RERANK_CANDIDATES;
         if (max < 1 || max > 1000) {
             throw new ConfigError("search.maxCandidates must be within 1-1000");
         }
@@ -418,7 +420,9 @@ public final class ConfigLoader {
         if (n == null) {
             throw new ConfigError("tools section required");
         }
-        int resultBytes = n.path("resultBytes").asInt(65536);
+        // AUDIT-2026-10-03-af: the magic number now names its own source.
+        int resultBytes = n.path("resultBytes")
+            .asInt(OperationalDefaults.TOOL_RESULT_BYTES);
         if (resultBytes < 1) {
             throw new ConfigError("tools.resultBytes must be at least 1, got "
                 + resultBytes + "; it bounds each tool result, and a smaller value "

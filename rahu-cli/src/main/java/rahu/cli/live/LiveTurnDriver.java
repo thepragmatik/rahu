@@ -40,8 +40,10 @@ import rahu.systemone.DecisionEngine;
  */
 public final class LiveTurnDriver {
 
-    private static final int DEFAULT_CONTEXT_ALLOWANCE = 8192;
-    private static final int DEFAULT_MAX_COMPLETION_TOKENS = 2048;
+    private static final int DEFAULT_CONTEXT_ALLOWANCE =
+        rahu.cli.config.OperationalDefaults.CONTEXT_ALLOWANCE_TOKENS;
+    private static final int DEFAULT_MAX_COMPLETION_TOKENS =
+        rahu.cli.config.OperationalDefaults.MAX_COMPLETION_TOKENS;
 
     /** The read-only workspace tools whose relevance the profile decision judges. */
     private static final List<String> PERMITTED_TOOLS =

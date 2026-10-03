@@ -16,6 +16,7 @@ import picocli.CommandLine.Spec;
 
 import rahu.cli.config.ConfigError;
 import rahu.cli.config.ConfigLoader;
+import rahu.cli.config.OperationalDefaults;
 import rahu.cli.config.RahuConfig;
 import rahu.cli.live.ExitCode;
 import rahu.cli.live.LiveAssembly;
@@ -250,12 +251,14 @@ public final class RunCommand implements Callable<Integer> {
 
         var gate = new PrivacyGate();
         var assembler = new PromptAssembler();
+        // AUDIT-2026-10-03-af: 8192 and 2048 were bare literals duplicated from
+        // LiveTurnDriver. Two of the three copies would have survived a change to the third.
         int allowance = cfg.context().maxPromptTokens() == null
-            ? 8192 : cfg.context().maxPromptTokens();
+            ? OperationalDefaults.CONTEXT_ALLOWANCE_TOKENS : cfg.context().maxPromptTokens();
         int maxTokens = cfg.agent().maxCompletionTokens() == null
-            ? 2048 : cfg.agent().maxCompletionTokens();
+            ? OperationalDefaults.MAX_COMPLETION_TOKENS : cfg.agent().maxCompletionTokens();
         BigDecimal perRunCap = cfg.agent().maxCostUsd() == null
-            ? BigDecimal.ZERO : cfg.agent().maxCostUsd();
+            ? OperationalDefaults.MAX_COST_USD : cfg.agent().maxCostUsd();
 
         // JSON mode sends the human trail to stderr only, so stdout carries exactly one
         // document. The answer is suppressed at the source in that mode rather than

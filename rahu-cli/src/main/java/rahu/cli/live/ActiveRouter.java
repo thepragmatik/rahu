@@ -38,9 +38,14 @@ public final class ActiveRouter {
 
     /** Provenance tag recorded on candidates built from catalog evidence. */
     private static final String CATALOG_HASH = "catalog-evidence-v1";
-    private static final int DEFAULT_CONTEXT_ALLOWANCE = 8192;
-    private static final int DEFAULT_MAX_CANDIDATES = 32;
-    private static final double DEFAULT_CONFIDENCE_FLOOR = 0.0;
+    // AUDIT-2026-10-03-af: these were bare literals here, and 8192 was also a bare literal
+    // in RunCommand. One authoritative home now, so the three sites cannot drift apart.
+    private static final int DEFAULT_CONTEXT_ALLOWANCE =
+        rahu.cli.config.OperationalDefaults.CONTEXT_ALLOWANCE_TOKENS;
+    private static final int DEFAULT_MAX_CANDIDATES =
+        rahu.cli.config.OperationalDefaults.MAX_CANDIDATES;
+    private static final double DEFAULT_CONFIDENCE_FLOOR =
+        rahu.cli.config.OperationalDefaults.CONFIDENCE_FLOOR;
 
     private final RahuConfig cfg;
     private final CandidateSet candidates;

@@ -8,6 +8,42 @@ Precedence: built-in operational defaults < explicit configuration file < docume
 
 `mode` is offline or live. Offline requires fake adapters/frozen fixtures and disallows network. Live requires a real System One adapter, generation credentials, explicit pool and baseline/fallback references. There is no implicit real model chosen because it appears cheap or popular. Operational defaults are supplied; user-authorised live model identity is a necessary input.
 
+## Operational defaults
+
+Every default below is applied when the field is absent, and each one is declared in
+`rahu.cli.config.OperationalDefaults` — the single authoritative source. `SchemaGenerator`
+emits them into the JSON Schema, and `OperationalDefaultsTest` fails if the schema, this
+document and the shipped value ever disagree.
+
+| Field | Default | Why |
+|---|---|---|
+| `context.maxPromptTokens` | 8192 | Prompt budget the router packs against before deciding whether to compact. Modest on purpose: a larger value defers the first compaction until the prompt no longer fits. |
+| `routing.maximumCandidates` | 32 | Ceiling on the candidate set. Also the schema's `maximum`, so the bound and the default cannot disagree. |
+| `routing.confidenceFloor` | 0.0 | See "Confidence floor" below. |
+| `agent.maxCompletionTokens` | 2048 | Per-generation completion ceiling. |
+| `agent.maxCostUsd` | 0 | No spend ceiling is enforced from configuration alone; provider-side limits still apply. |
+| `tools.resultBytes` | 65536 | 64 KiB per tool result. Matches `WorkspaceTools.DEFAULT_RESULT_BYTES` (`64 * 1024`) — two constants, one meaning. |
+| rerank `maxCandidates` | 20 | Candidates re-ranked by the tool-relevance reranker. |
+
+## Confidence floor
+
+`configuration.md` previously described the default routing gate as a 0.65
+`chosen_probability` threshold. **The shipped default is 0.0**, and this section records why
+the two were reconciled.
+
+`routing.md` calls its own 0.65 "a provisional concentration gate, not an accuracy
+guarantee" — it is a heuristic for discarding low-probability choices, not a correctness
+claim. Shipping it as the *default* would mean every run without an explicit
+`confidenceFloor` silently discards routes, which contradicts the shadow-mode default: the
+kernel proposes, and the operator's configured floor is what gates. An operator who wants the
+concentration behaviour opts in by setting `routing.confidenceFloor` explicitly.
+
+The direction of the earlier mismatch mattered. The code applied the *more permissive* 0.0
+while the spec advertised 0.65, so a reader of the doc would have got a stricter product than
+the doc described, and a reader of the code a looser one than the doc promised. Either way
+the disagreement was silent. `OperationalDefaultsTest.confidenceFloorAgreesWithTheSpec` now
+fails on any future divergence, so this cannot drift again.
+
 ## Fields
 
 | Field | Contract |
@@ -16,18 +52,18 @@ Precedence: built-in operational defaults < explicit configuration file < docume
 | `mode` | `offline` or `live` |
 | `decision` | adapter, baseUrl, compatibilityProfile, model, optional apiKeyEnv, timeoutMillis, costMode, optional pricing |
 | `generation` | adapter, baseUrl, apiKeyEnv, requireParameters, allowedProviders |
-| `routing` | mode shadow/active, pool, baseline, fallback, confidenceField, confidenceFloor, maximumCandidates |
+| `routing` | mode shadow/active, pool, baseline, fallback, confidenceField, confidenceFloor (default 0.0), maximumCandidates (default 32), rerank maxCandidates (default 20) |
 | `pools` | Named models with alias, exact or env-resolved ID, allowed reasoning policies, optional evidence-backed descriptions |
 | `summarisation` | pool, baseline, fallback; defaults to routing pool/references when feasible |
-| `agent` | maxGenerationAttempts, deadlineSeconds, maxCostUsd, maxCompletionTokens, maxCompactions |
+| `agent` | maxGenerationAttempts, deadlineSeconds, maxCostUsd (default 0, meaning no spend ceiling is enforced from configuration alone), maxCompletionTokens (default 2048), maxCompactions |
 | `catalog` | cacheTtlSeconds, allowStale, maximumStaleSeconds, optional offlineFixture |
-| `tools` | root, enabled names, exclusions, maxCallsPerStep, resultBytes |
+| `tools` | root, enabled names, exclusions, maxCallsPerStep, resultBytes (default 65536) |
 | `trace` | directory, capture metadata/payloads, onFailure stop |
-| `context` | instructionFiles (explicit ordered local paths), optional maxPromptTokens, routerStateBytes |
+| `context` | instructionFiles (explicit ordered local paths), optional maxPromptTokens (default 8192), routerStateBytes |
 | `session` | mode `in-process`, maxTurns, maxCostUsd; no automatic persistence |
 | `orchestration` | mode `single` only in alpha |
 | `privacy` | mode `strict`, onUnknown `block`, inputClassification `unknown`/`approved-nonsensitive`, optional local sourcePolicyFile |
-| `search` | mode `off`/`shadow`/`enforce`, maxCandidates 1-1000; absent means off. Shadow scores and reports the proposed order without applying it. Each search costs one decision call once enabled |
+| `search` | mode `off`/`shadow`/`enforce`, maxCandidates 1-1000 (default 20); absent means off. Shadow scores and reports the proposed order without applying it. Each search costs one decision call once enabled |
 | `injection` | mode `off`/`shadow`/`enforce`, threshold 0-1; absent means off. Do not set `enforce` until the shadow threshold is calibrated against real observations |
 
 
@@ -39,7 +75,7 @@ Limits are finite: timeouts/deadlines and byte/token/attempt counts must be posi
 
 | Setting | Default |
 |---|---|
-| Routing | shadow; chosen_probability gate 0.65; max 32 candidates |
+| Routing | shadow; confidenceFloor default 0.0 (see below); max 32 candidates |
 | Local decision URL | `http://127.0.0.1:8000` |
 | Decision timeout | 5000 ms total; 3000 ms connect |
 | Generation URL | `https://openrouter.ai/api/v1` |

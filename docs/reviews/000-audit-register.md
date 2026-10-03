@@ -92,7 +92,8 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | G07 gap | MED | No third-party compiled extension example exists. The registry is wired and tested. | Needs an out-of-tree module built and run. |
 | A19, A25–A32 | MED | Eight acceptance IDs rested on slice reviews rather than one test each. This is the last row blocking the M1 offline declaration. | Eight small named tests. |
 | ~~A19~~ | — | **DONE (AUDIT-2026-10-03-ae)** — the preview toolchain was ceremonial: 356 class files, zero with the preview marker, and the jar ran fine without the flag. Now 5 tests read the bytecode and tie it to the pom/launcher; 8 mutations caught. | — |
-| A01, A17, A20, A30 | MED | The four acceptance IDs still with **no** test at all. | Four small named tests. |
+| ~~A01~~ | — | **DONE (AUDIT-2026-10-03-af)** — "zero external calls" was a printed sentence and the schema had zero defaults, with 8192 written out three times and a spec/code floor conflict (0.65 vs 0.0). Now 6 tests; every mutation caught. | — |
+| A17, A20, A30 | MED | The three acceptance IDs still with **no** test at all. | Three small named tests. |
 
 ---
 
@@ -3528,3 +3529,86 @@ told me, rather than my reasoning catching it.
 Toolchain agreement (the first clause) is now **verified by test, not asserted by
 document**. The second clause is enforced for the docs that exist. This is one of the five
 A-IDs that had no coverage; A01, A17, A20 and A30 remain.
+
+
+---
+
+## AUDIT-2026-10-03-af — A01: "zero external calls" was a printed sentence, and "defaults documented" was false
+
+A01 has three clauses: deterministic fake answer/trace, **zero external calls**, **defaults
+documented**. `DemoCommandTest` covered the first well (trace dialect, honest null usage,
+readable by the shipped `inspect`). The other two had nothing checking them.
+
+### Clause 2: "no network calls were made" was a string
+
+`DemoCommand` printed exactly that sentence. A printed claim cannot be falsified, so it stays
+true until it doesn't — which is the definition of a claim that is not evidence.
+
+The obvious proof was unavailable: **JDK 27 removed `SecurityManager` outright**.
+`System.setSecurityManager` throws `UnsupportedOperationException`, so the classic sandbox is
+gone. A behavioural test (run the demo, watch for connections) would also have been a race, not
+a proof — it can only catch a connection that lands before the test finishes.
+
+So I proved it structurally instead: walk the **constant pool** of every class reachable from
+`DemoCommand` and refuse any reference into `java.net`, `java.net.http`, `javax.net`,
+`sun.net`, `jdk.internal.net`, `java.rmi`. Result: the demo reaches exactly three classes —
+`DemoCommand`, `RunTracer`, and the nested `DemoCommand$1` — and **zero networking types**.
+
+### Clause 3: there were no defaults to document
+
+The generated schema carried **zero** `default` annotations. Every operational default lived as
+a bare literal inside a production `if`-expression, and `context.maxPromptTokens` = 8192 was
+written out **three times**: `ActiveRouter`, `LiveTurnDriver`, and a bare `8192` in
+`RunCommand`. Nothing tied the three together, so changing the default would have left two of
+them stale — and both live turn paths are live (`chat` → `LiveTurnDriver.run()`,
+`run` → `LiveTurnDriver.turn()`), so the drift would show on one command and not the other.
+
+And the spec contradicted the code: `configuration.md` documented the default routing gate as
+`chosen_probability 0.65`; the code applied `DEFAULT_CONFIDENCE_FLOOR = 0.0`. Opposite
+meanings — 0.65 discards a route whose chosen action looks unconfident, 0 accepts everything —
+so an operator who read the spec and configured nothing got a *different, more permissive*
+product than the doc described, silently.
+
+**Resolved**: `rahu.cli.config.OperationalDefaults` is now the single authoritative home, the
+schema generator injects the defaults programmatically (read from the constant, never retyped
+into the JSON literal), and `configuration.md` documents all seven with the reasoning. The floor
+is **0.0**: `routing.md` calls its own 0.65 "a provisional concentration gate, not an accuracy
+guarantee", and shadow mode should not silently discard routes.
+
+### My first constant was wrong, and the code caught it
+
+I wrote `TOOL_RESULT_BYTES = 64`. The shipped value is **65536**. `WorkspaceTools` also
+declares a `DEFAULT_RESULT_BYTES` of `64 * 1024` — the same number under a different-looking
+spelling, which is exactly how the confusion started. The schema comparison failed and said so.
+
+### Two holes in my own tests, found only by mutation
+
+| mutation | caught by |
+|---|---|
+| demo **names** `java.net.http.HttpClient` (unused import) | demoReachesNoNetworkingApi (after fix) |
+| floor constant changed, spec left at 0.0 | confidenceFloorAgreesWithTheSpec |
+| schema loses the 8192 default | operationalDefaultsAreDocumented + confidenceFloor |
+| spec drops `(default 8192)` | defaultsAppearInTheSpec |
+| `RunCommand` re-duplicates the literal | noDuplicatedMagicDefaults |
+| `LiveTurnDriver` bypasses the constant | compile error (the import-free rename) |
+
+**M1a was not caught at first.** `javac` erases an unused import, so it leaves *no* constant-pool
+trace. My bytecode walk proves the demo does not **use** networking, which is the right
+guarantee — but the mutation was still a fair test, and an unused HTTP-client import in an
+offline demo is either a half-finished feature or a leftover. The test now scans the source too.
+
+**The duplication rule was worse: it was wrong.** First version counted occurrences of `8192`
+and allowed up to two. Mutation M5 replaced the shared constant with a bare literal in
+`RunCommand` — which *dropped* the count to one, well inside the limit, so the duplication
+returned and the test passed. A bound cannot distinguish "one authoritative declaration" from
+"no authoritative declaration". It now requires the literal to be **absent** outside
+`OperationalDefaults` and the four known consumers to be **present**, so the shared home cannot
+silently become dead code. I also inverted that second assertion on the first run and the
+`(restored)` state failed — which is the check working.
+
+Every mutated file restored byte-identical afterwards (verified).
+
+### A01 status
+
+All three clauses now have tests, and each test has been shown to fail on the regression it
+names. Remaining uncovered acceptance IDs: **A17, A20, A30**.
