@@ -2,7 +2,7 @@
 
 Rahu is a Java agent harness with a separately configurable System One decision plane. It selects legal execution candidates that combine a generation model, reasoning effort, and provider policy. Java code owns the agent loop, budgets, tool authority, and observability.
 
-**Status:** dogfood-alpha implementation (S01–S10 complete, S11 packaging). The CLI builds, 539 tests pass offline, and the read-only product surface (demo, config, route inspect, chat, eval, traces, replay) works. No live-model dogfood or benchmark claim yet — G09 live verification is a separate gate.
+**Status:** dogfood-alpha implementation (S01–S10 complete, S11 packaging). The CLI builds, 546 tests pass offline, and the read-only product surface (demo, config, route inspect, chat, eval, traces, replay) works. No live-model dogfood or benchmark claim yet — G09 live verification is a separate gate.
 
 ## Quickstart (offline, no keys needed)
 

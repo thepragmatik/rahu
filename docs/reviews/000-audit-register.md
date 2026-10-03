@@ -3250,3 +3250,86 @@ declared 535 methods and surefire ran 539. Corrected the README. That guard has 
 me twice, which is the argument for having written it.
 
 **539 tests green** (184 core / 21 openrouter / 36 systemone / 298 cli), 0 skipped.
+
+
+---
+
+## AUDIT-2026-10-03-ac — a promised strictness with nothing holding it in place
+
+Follow-up to ab, which left `artifacts.md` unchecked. It makes two claims about the config
+loader: *"Generate `docs/generated/config.schema.json` ... with unknown/duplicate-key
+rejection and cross-field validation in code"* and *"CI validates config/examples/suites
+and Markdown destinations alongside code."*
+
+### The strictness is real, and entirely untested
+
+Unknown-key rejection is now covered (ab). Duplicate-key rejection had **zero tests
+anywhere in the repository** — `grep -rniE duplicate --include=*.java` returned nothing.
+
+Before writing the test I probed the behaviour, because a test that pins a bug is worth
+less than one that pins a fix. It works at every nesting level:
+
+    top-level dup             -> ConfigError: duplicate JSON key found; ... 'schemaVersion'
+    nested dup (decision)     -> ConfigError: duplicate JSON key found; ... 'adapter'
+    pool model dup            -> ConfigError: duplicate JSON key found; ... 'id'
+    duplicate, identical vals -> ConfigError: duplicate JSON key found; ... 'schemaVersion'
+
+So the finding is not a defect but an **unheld promise**, and that is the worse shape for a
+strictness feature. It reads as dead code that a well-meaning simplification could delete,
+and Jackson accepts duplicates *by default* — so a regression would not throw. It would
+silently read the config as the last value, which is precisely the case where nothing
+downstream looks wrong.
+
+`ConfigDuplicateKeyTest` (7 tests) pins it, and asserts more than the throw: the message
+must name the offending field, because *"duplicate key somewhere"* sends the operator
+hunting through the whole file. One test asserts a duplicate is not reported as a generic
+syntax error — `parseStrict` branches on the message text, so if Jackson ever phrases a
+duplicate differently the branch falls through to *"invalid JSON; fix the syntax"*, which
+is advice that cannot help because the syntax is valid.
+
+Two cases are there specifically because they are the ones a reviewer would assume are
+covered: a duplicate whose values are **identical** (both copies read as the same thing, so
+nothing looks wrong) and **strictness surviving a second load through one instance** (the
+loader disables the feature on the shared factory and re-enables it per-parser; if that
+were left disabled by some path, the second load in a process would quietly accept a
+duplicate). The mapper is a per-instance field, so nothing leaks across loaders — checked,
+not assumed.
+
+| mutation | caught |
+|---|---|
+| strictness removed entirely | all 5 rejection tests |
+| message branch dropped (`if (false)`) | all 5 + the not-a-syntax-error test |
+| offending field name stripped | all 5 rejection tests |
+| wording changed | the not-a-syntax-error test |
+
+### Two of my own measurement faults, and what they cost
+
+- **A broken mutation harness reported a hole that did not exist.** My first
+  attribution regex was `ConfigDuplicateKeyTest\.(\w+)\(` — surefire prints
+  `Class.name:93->helper:59`, so the name is followed by `:`, not `(`. M4 looked like it
+  passed when it should have failed. Re-run with `[:(]` it failed correctly. **A mutation
+  harness that silently finds nothing is worse than no harness**: it reads as evidence of
+  robustness.
+- **M3 never applied at all.** My replacement ended `+ ")";` where the source has
+  `+ ")");`, so `str.replace` was a no-op and the "no failing tests" result was vacuous.
+  I only caught it because the mutated string equalled the original when I printed it.
+  A mutation that does not compile-or-differ is not a mutation.
+- Smaller: I hit `ConfigLoader.ConfigError` a second time — it is a top-level class, not
+  nested — and the LSP flagged it before the compiler. Also wrote a broken probe using a
+  `bash -lc` heredoc with nested escaping, which is how line 16 became unparseable.
+
+### The CI claim is false as written
+
+`artifacts.md` said CI validates configs, examples, suites and Markdown destinations.
+**There is no `.github/workflows` directory at all**, and no review had recorded CI as a
+known gap. Rewritten to say the *build* performs that validation and that running it in
+CI is deferred to release hardening — a claim about what exists, not about what is
+intended.
+
+`build-manifest.json` is the remaining unfulfilled item in that section: the spec says to
+record build versions there, no code emits it, and `docs/generated/` holds only
+`config.schema.json` and `model-profiles.json`. Already tracked as deferred to S12 in
+`013-s11-packaging-review.md`, so recorded rather than fixed here.
+
+**546 tests green** (184 core / 21 openrouter / 36 systemone / 305 cli), 0 skipped.
+`DocumentedClaimsTest` caught the README a third time — that guard earns its keep.

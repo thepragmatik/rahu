@@ -40,6 +40,6 @@ Admission uses one ledger across follow-up and compaction phases; remaining expe
 
 ## Config and event schemas
 
-Generate `docs/generated/config.schema.json` from v1 field definitions with unknown/duplicate-key rejection and cross-field validation in code. Add complete golden v1 events and JSON result/report fixtures under test resources. File schemas distinguish optional unavailable fields from numeric zero; schema evolution follows [observability.md](observability.md). CI validates config/examples/suites and Markdown destinations alongside code.
+Generate `docs/generated/config.schema.json` from v1 field definitions with unknown/duplicate-key rejection and cross-field validation in code. Add complete golden v1 events and JSON result/report fixtures under test resources. File schemas distinguish optional unavailable fields from numeric zero; schema evolution follows [observability.md](observability.md). The build validates config/examples/suites and Markdown destinations alongside code; running that validation in CI is deferred to the release-hardening phase (no workflow exists yet).
 
 Record build versions/revisions in `docs/generated/build-manifest.json` when building. Do not write 'latest' as a reproducible version. Synthetic event/body fixtures carry `synthetic=true` in provenance sidecars, not unknown vendor body fields. Report actual tested compatibility, not a compatibility claim copied from a README.
