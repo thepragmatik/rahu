@@ -83,10 +83,10 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | F-6 | LOW | Two sources of truth for `routing.confidenceFloor` (`ConfigLoader` 0.65, `ActiveRouter` 0.0). Unreachable today; a trap for a hand-built config. | Choosing the authoritative number is an operator decision. |
 | F-7 | MED | `Question` is not `sealed`. A new question type compiles unregistered and fails at `questionId()` — loud, but late. | Breaking change to a port with one implementation and no second implementor. |
 | F-8 | MED | All transport failures collapse to `TIMEOUT`. A read timeout (ambiguous) is indistinguishable from a connect failure (definite). The ledger handles the ambiguity correctly via `markUncertain`, so cost is sound and only the diagnostic is coarse. | Would need a new `FailureKind`. |
-| F-9 | MED | `tools.resultBytes` is inert, same shape as F-4. `WorkspaceTools` uses its own `MAX_READ_BYTES`. | A behaviour change to tool output bounds; deserves its own proof. |
-| F-11 | HIGH | `confidenceField` is documented, plumbed and never read — F-4's shape, on the routing path. | Bundle with the sweep below rather than as an isolated change. |
+| ~~F-9~~ | ~~MED~~ | **FIXED** (AUDIT-p, `0e130e9`) — `tools.resultBytes` now bounds read, list and search, and non-positive caps are refused at load. Was listed here while already fixed. | — |
+| ~~F-11~~ | ~~HIGH~~ | **FIXED** (AUDIT-e) — `RouteResolver` reads it via `confidenceOf(c, in.confidenceField())`. Was listed here while already fixed. | — |
 | C-1 | MED | A sub-microdollar cost rounds to a settled **zero** instead of settling as uncertain. The only `double` in any cost path; it destroys the exact-decimal guarantee at the boundary where money enters. | Cost-path change; needs its own ledger proof. |
-| C-2 | MED | `CompactionPlanner` fails **open** on a typo'd label — `"CONCISE"` and `"verbos"` both map to `DEFER`. The javadoc claims absent defaults to CONCISE; it does not. At high context pressure context is silently never compacted. | `TaskClass.fromLabel` already does it correctly — copy, with a test. |
+| ~~C-2~~ | ~~MED~~ | **FIXED** (AUDIT-q) — fails closed on a typo'd, null or absent label; DEFER now only from an explicit label that passed the fit check. Was listed here while spec-mandated (`systemone.md:40`). | — |
 | C-3 | MED | `estimateTokens` silently clamps to the allowance it was passed, so one input yields different answers depending on the cap. `ContextPlan.estimatedTokens` then reports a clamped allowance as a measurement. | An estimate presented as a measurement; needs a rename or an unclamped method. |
 | — | MED | Five accepted-and-ignored fields remain: `routing.confidenceField`, `decision.confidenceSemantics`, `OperationRequirements.isTextAnswer`, `.structuredOutputRequired`. | See the sweep below. |
 | G07 gap | MED | No third-party compiled extension example exists. The registry is wired and tested. | Needs an out-of-tree module built and run. |
@@ -2070,3 +2070,138 @@ item a register lists, verify it is still open.** A status list that nobody re-v
 is a list of beliefs, not of facts — and I had been reasoning from it as if it were
 evidence, which is the failure this whole audit exists to catch.
 
+
+
+---
+
+## AUDIT-2026-10-03-q — the register's own "Open" table, audited against source
+
+Last increment's lesson was to verify every item a status list names before working it.
+Two of five were stale. This increment applies that to the register's **top table** —
+"Open — verified real, deliberately not fixed" — row by row, against source rather than
+against my own note. The table heading claims its rows were "confirmed". Two were not
+open at all.
+
+### Two rows were already fixed and still listed as open
+
+| Row | Claimed | Actual |
+|---|---|---|
+| **F-9** | `tools.resultBytes` is inert; `WorkspaceTools` uses its own `MAX_READ_BYTES` | FIXED in AUDIT-p (`0e130e9`) — same increment that made me notice |
+| **F-11** | `confidenceField` documented, plumbed, never read | FIXED in AUDIT-e; `RouteResolver.java:99` reads it via `confidenceOf(c, in.confidenceField())` |
+
+Corrected to FIXED with their commits. A table headed "verified real" that had not been
+re-verified for two increments was exactly the belief-not-evidence failure.
+
+### C-2 was worse than recorded — and a test was enforcing it
+
+C-2 said `CompactionPlanner` "fails **open** on a typo'd label" and deferred it as "copy
+`TaskClass.fromLabel`, with a test". The spec makes it mandatory, not optional:
+
+> **systemone.md:40** — "Compaction-policy failure defaults to concise if
+> compaction is feasible/required; otherwise defer or stop by deterministic fit."
+> **runtime.md:29** — "At 80% of usable context, ask System One for defer/concise/detailed."
+
+The code failed open **twice**, and the javadoc claimed the opposite of its own behaviour:
+
+- `"concise"` and `"detailed"` matched a bare `switch` on the raw label; **everything
+  else fell into the same branch as a real `defer`**. So `"CONCISE"`, `"verbos"` and a
+  genuine `defer` were indistinguishable.
+- `decision.isEmpty()` — the shape an **unreachable engine** produces, because
+  `CompactionPolicyDecider` catches the `RuntimeException` and passes `Optional.empty()`
+  — left `requested = Policy.DEFER`.
+- The javadoc said "a failed or **absent** answer defaults to CONCISE (fail closed)". It
+  did not. My own comment described the fix that was missing.
+
+**Why the absent case is the damaging one.** This consult runs *only* at
+`LiveTurnDriver.java:376`, `if (pressure >= 0.80)`. So an unreachable decision engine
+printed `compaction: policy=defer pressure=0.85 — defer: context fits; nothing compacted`
+— at exactly the moment the caller had measured the context as over the trigger. And the
+deterministic fit check could not rescue it: that check promotes DEFER to CONCISE only
+when the next request **cannot** fit, so any comfortable allowance left it deferring.
+
+### The fix
+
+`Policy.fromLabel(String)` — case-insensitive, trimmed, closed vocabulary, **CONCISE** for
+anything unrecognised, mirroring `TaskClass.fromLabel` on the same wire. And
+`requested` now starts at `CONCISE`, so every non-answer fails closed: absent, a failure,
+an unusable label, and a null label. DEFER is now reachable **only** from an explicit
+label that passed the fit check.
+
+The comment on the enum records why an unrecognised label is a *failure* and not a
+defer: the labels arrive as free text from a model, so refusing `"CONCISE"` would be the
+same defect at a new scale.
+
+### A test I had to correct — it was enforcing the defect
+
+`CompactionPolicyDeciderTest.transportFailureDelegatesToDeterministic` asserted **DEFER**,
+with the message *"without a consultation nothing is compacted"*. Its sibling 20 lines
+up asserted CONCISE for a failed *answer*. **Two tests in one class disagreed about one
+rule**, which is only possible when one was pinned to the implementation instead of the
+spec.
+
+I corrected it against `systemone.md:40`, not against its sibling, and kept the
+reasoning in the test. Worth recording as a pattern: a test can be wrong in the same
+direction as the code it was written beside, and a green suite will not tell you.
+
+### Proving it at the call site, not just in the helper
+
+`CompactionPolicyDecisionTest` and `CompactionPolicyDeciderTest` both passed while the
+bug lived. They cannot prove the **driver** reaches the planner with a pressured context
+— the exact gap AUDIT-p taught me to look for: a correct helper the production call site
+never uses.
+
+`CompactionTriggerWiringTest` drives the real `LiveTurnDriver` with
+`"maxPromptTokens": 40` (the estimator is `bytes/3 + messages`, so the prompt alone
+exceeds 32 tokens and the trigger fires on the first turn, with no history to build up)
+and an engine whose `askAll` throws. It asserts on what the **operator was told**.
+
+Six driver mutations, all caught:
+
+| Mutation | Result |
+|---|---|
+| planner: absent → DEFER (the original defect) | CAUGHT |
+| decider fabricates a `defer` answer instead of consulting | CAUGHT |
+| driver never reaches the consult (`if (false)`) | CAUGHT |
+| trigger threshold raised to 1.01 | CAUGHT |
+| compaction line suppressed | CAUGHT |
+| **pressure computed as 0.0** | CAUGHT |
+
+The pressure mutation matters most: without it the test could pass because pressure
+happened to be high for an unrelated reason — the AUDIT-p lesson about inputs tripping a
+*different* limit, applied to reachability instead of truncation.
+
+Two of my first six anchors SKIPped. That was my anchor strings, not test weakness —
+`LiveTurnDriver` indents that block 16 spaces, not 18. Re-run with the real text.
+
+### Two survivors I chased down rather than wrote off
+
+1. **`fromLabel(null) → DEFER` survived.** Every production constructor avoids null (the
+   adapter reads `asText("")`; so does `ReplayCapture`), so the branch is not exercised
+   today — but `ValidChoice` is a **public record on the decision port**, and
+   `new ValidChoice("q", null, ...)` compiles for any future implementor. Pinned with a
+   test, since a null that silently means "do not compact" is the worse default.
+
+2. **Deleting the DEFER note survived.** Investigated rather than accepted, and the
+   reason was instructive: deleting the arm does not compile — the switch is exhaustive
+   over an enum — so the "survivor" was an **invalid mutation**. The compile-clean version
+   (`case DEFER -> null`) fails two tests. Recording this because my mutation runner
+   counted a compile error as zero failures, which is exactly how a battery can look
+   complete while proving nothing. I now check for `COMPILATION ERROR` before reading a
+   mutation result.
+
+Also caught: the wrong CONCISE cap in the note (`512` is in `context.md:36`, so the note
+must carry it), notes collapsed to one string, and `answered` lying in either direction.
+
+### 478 tests green (168 core / 14 openrouter / 30 systemone / 266 cli)
+
+### Still open after this sweep
+
+- **F-6** `confidenceFloor` has two defaults (`ConfigLoader` 0.65, `ActiveRouter` 0.0).
+  Confirmed still open, and still unreachable today. Genuinely an operator decision.
+- **F-7** `Question` is now `sealed` (`DecisionEngine.java:116`), but the row says it is
+  not. My row was written before that change and never re-read.
+- **F-8** all transport failures collapse to `TIMEOUT` (`SystemOneHttpAdapter:123`).
+  Still open; needs a new `FailureKind`.
+- **C-1** cost rounding to a settled zero, **C-3** `estimateTokens` clamping (which also
+  caps `pressure` at 1.0 — noted here because this increment touches that value).
+- **C-2** is now FIXED. F-9 and F-11 are now FIXED.

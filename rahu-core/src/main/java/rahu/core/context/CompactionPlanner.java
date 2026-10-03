@@ -13,7 +13,37 @@ import rahu.core.model.ChatMessage;
  */
 public final class CompactionPlanner {
 
-    public enum Policy { DEFER, CONCISE, DETAILED }
+    public enum Policy { DEFER, CONCISE, DETAILED;
+
+        /**
+         * Parses a System One compaction label; anything not in the closed
+         * vocabulary becomes CONCISE.
+         *
+         * <p>systemone.md:7 fixes the vocabulary as "defer, concise, detailed", and
+         * systemone.md:40 says a compaction-policy FAILURE defaults to concise. An
+         * unrecognised label is a judgement that produced no usable answer, so it
+         * takes that failure default rather than the DEFER branch it used to share
+         * with a real defer - which made a typo look exactly like an explicit
+         * instruction not to compact.
+         *
+         * <p>Case and surrounding whitespace are ignored, matching
+         * {@link rahu.core.decision.TaskClass#fromLabel} on the same wire. The
+         * labels reach us as free text from a model, so "CONCISE" is a spelling of
+         * the same answer and refusing it would be the same defect at a new scale.
+         */
+        public static Policy fromLabel(String label) {
+            if (label == null) {
+                return CONCISE;
+            }
+            String normalised = label.trim().toLowerCase(java.util.Locale.ROOT);
+            for (Policy candidate : values()) {
+                if (candidate.name().toLowerCase(java.util.Locale.ROOT).equals(normalised)) {
+                    return candidate;
+                }
+            }
+            return CONCISE;
+        }
+    }
 
     /** What to do when candidates were excluded solely for context (A29). */
     public enum ContextOnlyAction { COMPACTION_PLAN, TERMINATE }
@@ -62,16 +92,18 @@ public final class CompactionPlanner {
     public static Plan plan(List<ChatMessage> history, Optional<DecisionResult> decision,
         int contextAllowanceTokens, int maxRecentTurns) {
 
-        Policy requested = Policy.DEFER;
+        // Every non-answer fails closed to the conservative compact. This used to
+        // leave an ABSENT decision at DEFER, which is precisely the outcome the 80%
+        // trigger exists to prevent: an unreachable decision engine printed
+        // "context fits; nothing compacted" while the caller had already measured
+        // the context as over the trigger. The deterministic fit check could not
+        // rescue it, because that check promotes DEFER to CONCISE only when the next
+        // request CANNOT fit - a generous allowance left it deferring. systemone.md:40
+        // requires the concise default; see also TurnProfile, which fails closed the
+        // same way when a classification is missing.
+        Policy requested = Policy.CONCISE;
         if (decision.isPresent() && decision.get() instanceof DecisionResult.ValidChoice c) {
-            requested = switch (c.chosenLabel()) {
-                case "concise" -> Policy.CONCISE;
-                case "detailed" -> Policy.DETAILED;
-                default -> Policy.DEFER;
-            };
-        } else if (decision.isPresent()) {
-            // Consulted but unreachable: fail closed to the conservative compact.
-            requested = Policy.CONCISE;
+            requested = Policy.fromLabel(c.chosenLabel());
         }
 
         // The fit check estimates the candidate NEXT-REQUEST list (stored

@@ -1,6 +1,7 @@
 package rahu.cli.live;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -86,8 +87,8 @@ class CompactionPolicyDeciderTest {
     }
 
     @Test
-    @DisplayName("A transport failure means no consultation: deterministic override only")
-    void transportFailureDelegatesToDeterministic() {
+    @DisplayName("A transport failure fails closed to concise, like any other failure")
+    void transportFailureFailsClosedToConcise() {
         var engine = new FakeEngine(choice("defer", 0.9)) {
             @Override
             public Map<String, DecisionResult> askAll(State state, List<Question> questions) {
@@ -96,9 +97,30 @@ class CompactionPolicyDeciderTest {
         };
         var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000);
 
-        assertEquals(CompactionPlanner.Policy.DEFER, consult.policy(),
-            "without a consultation nothing is compacted");
-        assertFalse(consult.answered());
+        // CORRECTED (AUDIT-2026-10-03-q). This asserted DEFER, with the message
+        // "without a consultation nothing is compacted". That is the defect, not the
+        // contract. Two reasons, in order of authority:
+        //
+        // 1. systemone.md:40 - "Compaction-policy FAILURE defaults to concise if
+        //    compaction is feasible/required". A transport failure is a failure.
+        //    There is no clause carving out "unreachable" as a distinct outcome.
+        // 2. The sibling test above already asserts CONCISE for a failed ANSWER. Two
+        //    tests in one class disagreed about the same rule, which is only possible
+        //    when one of them was pinned to the implementation rather than the spec.
+        //
+        // The old behaviour was also self-defeating: this consult only happens at the
+        // 80% pressure trigger, so a defer here printed "context fits; nothing
+        // compacted" at exactly the moment the caller had measured the context as
+        // over the trigger. The deterministic fit check could not rescue it either -
+        // that check promotes DEFER to CONCISE only when the next request CANNOT fit,
+        // and 8000 tokens of history fits comfortably.
+        assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy(),
+            "an unreachable engine is a failed compaction-policy judgement, so it "
+                + "defaults to concise; deferring here would leave a pressured "
+                + "context uncompacted for exactly the reason the trigger fired");
+        assertFalse(consult.answered(),
+            "still reported as unanswered, so the trace records the failure rather "
+                + "than claiming System One chose this");
     }
 
     @Test
@@ -126,5 +148,54 @@ class CompactionPolicyDeciderTest {
 
         assertEquals(CompactionPlanner.Policy.CONCISE, consult.policy(),
             "the next request cannot fit; defer must not be honoured");
+    }
+
+    @Test
+    @DisplayName("The DEFER note claims the context fits, and it now always does")
+    void deferNoteIsAccurate() {
+        // The note is printed to the operator at the 80% trigger, and "defer: context
+        // fits; nothing compacted" is a CLAIM about the context. This increment made
+        // it true: DEFER is now reachable only from an explicit label that passed the
+        // deterministic fit check, instead of also being the fallback for an
+        // unreachable engine. Asserting the text pins that relationship - a mutation
+        // re-wording or deleting the note is invisible otherwise, and a note that
+        // misreports the fit is how the old defect reached an operator as a
+        // confident sentence.
+        var engine = new FakeEngine(choice("defer", 0.9));
+        var consult = new CompactionPolicyDecider(engine).consult(history(10), 8000);
+
+        assertEquals(CompactionPlanner.Policy.DEFER, consult.policy());
+        assertEquals("defer: context fits; nothing compacted", consult.safeNote(),
+            "an honoured defer must say plainly that nothing was compacted");
+    }
+
+    @Test
+    @DisplayName("Every policy carries a distinct, non-empty operator note")
+    void everyPolicyHasItsOwnNote() {
+        // Closing the delete-the-note survivor. Deleting the DEFER arm compiles -
+        // the switch is exhaustive over an enum - and the decider still runs, still
+        // compacts correctly, and prints "compaction: policy=defer pressure=0.85 -
+        // null". The behaviour was fixed; the explanation vanished, and nothing else
+        // in the suite could see it. Asserting the KEY SET rather than one string is
+        // what makes the removal impossible to reintroduce silently.
+        var notes = new java.util.LinkedHashMap<String, String>();
+        for (String label : new String[] {"defer", "concise", "detailed"}) {
+            var consult = new CompactionPolicyDecider(new FakeEngine(choice(label, 0.9)))
+                .consult(history(10), 8000);
+            assertNotNull(consult.safeNote(),
+                "policy " + label + " must carry a note; null means the operator "
+                    + "sees a literal null where the explanation should be");
+            assertFalse(consult.safeNote().isBlank(),
+                "policy " + label + " must carry a non-blank note");
+            notes.put(label, consult.safeNote());
+        }
+        assertEquals(3, notes.size(), "each policy must say something different");
+        assertEquals(3, new java.util.HashSet<>(notes.values()).size(),
+            "the three notes must be distinct, otherwise two policies are "
+                + "indistinguishable to an operator reading the log: " + notes);
+        assertTrue(notes.get("concise").contains("512")
+                && notes.get("detailed").contains("1024"),
+            "the notes must carry the spec's output caps (context.md:36), because "
+                + "'concise' alone does not tell an operator what it costs: " + notes);
     }
 }
