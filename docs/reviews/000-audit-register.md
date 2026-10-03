@@ -1660,3 +1660,73 @@ unbounded tool result is a **context** risk (context.md's bounded-feature rule),
 privacy or spend risk — no data leaves the machine by being long. So this is correctly
 a design question, not something to force through a gate.
 
+---
+
+## AUDIT-2026-10-03-m — cross-cutting re-audit: hunting SHAPES, not instances
+
+AUDIT-j, -k and -e were each found by asking a narrow question and following it. That
+works but it is opportunistic. This pass searches for the *shapes* those three fixes
+revealed, to see whether more instances exist.
+
+### Shape A: a path returning a bare `int` where its sibling returns a result object
+
+The AUDIT-k root cause. `LiveTurnDriver` has the identical pair:
+
+```java
+private int oneTurn(...) {
+    return turn(...).exitCode();      // the outcome is built, then thrown away
+}
+```
+
+and `run()` consumes only that int. So the multi-turn chat loop discards every turn's
+outcome, exactly as `runOffline` did.
+
+**Assessed as NOT a defect**, on evidence:
+
+- `/status` (cli.md:23 requires "current route, turn count and aggregate
+  settled/reserved/uncertain spend") reads `session.turnCount()` and
+  `session.ledger()` **directly** — not from a `TurnOutcome`. Verified live:
+  `/status` prints `turns=0, settled=0 USD, uncertain=0, remaining=3.00,
+  maxTurns not reached: true`, and `/reset` prints `reset: conversation cleared;
+  ledger and counts retained`.
+- `/bogus` and `/help` correctly exit 2 with `unsupported command /bogus;
+  supported: /status /reset /exit` — cli.md:23's "reject unsupported slash commands
+  with help before a paid call" is met, with **no** paid call made.
+
+So the chat loop has no consumer starved by the bare int. It is a **latent** shape,
+not a live bug: it becomes one the moment something needs a turn's outcome from
+inside the loop. Recorded so the next reader knows it was checked and why it stands.
+
+### Shape B: a second implementation of a writer/serializer
+
+The AUDIT-j root cause. No further instance found: after AUDIT-j, both live and
+offline paths go through `RunTracer`, and both `run` modes go through `renderJson`.
+
+### Shape C: config validated but never read
+
+The AUDIT-e root cause. Now exhaustively enumerated rather than sampled, because
+AUDIT-e proved this class hides in plain sight (a field can be parsed, schema-exposed,
+traced, replayed and still inert). Covered in AUDIT-l: one actionable
+(`confidenceSemantics`), one blocked on a spec decision (`resultBytes`), two that are
+future scaffolding (`isTextAnswer`, `structuredOutputRequired`).
+
+### The thing I did not do
+
+I got two turns into checking whether `/reset` preserves the turn count as cli.md:23
+requires, hit a privacy block (my probe omitted `--input-classification`, which
+`chat` does not take the way `run` does), and realised I was **inventing a probe**
+rather than testing a hypothesis I had evidence for.
+
+Stopping there is the point. Two increments ago I invented an API and a helper that
+did not exist; the register records that. The discipline that is actually working is:
+**do not manufacture a test for a hypothesis I have not first confirmed with a
+source-level fact.** `/reset` turn-count retention is a real open question and is
+recorded as one, unverified, rather than half-tested.
+
+### Status
+
+No new live defects from this pass. One latent shape recorded with its reason for
+standing down, one unverified question recorded as a question. That is the honest
+outcome of a sweep that found nothing — and worth recording precisely so a later
+reader does not assume the pass was skipped.
+
