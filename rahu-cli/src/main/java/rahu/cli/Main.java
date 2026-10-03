@@ -13,9 +13,10 @@ import picocli.CommandLine.Command;
     description = "Java agent harness with a configurable System One decision plane.",
     subcommands = { DemoCommand.class, ConfigCommand.class, RouteInspectCommand.class,
         ChatCommand.class, EvalCommand.class,
-        // cli.md:14 documents `rahu replay`; it did not exist until
-        // AUDIT-2026-10-03-e, and ReplayEngine was unreachable from src/main.
-        rahu.cli.trace.ReplayCommand.class })
+        // cli.md:13-14 document `rahu trace inspect` and `rahu replay`; neither
+        // existed until AUDIT-2026-10-03-e/f, and ReplayEngine was unreachable
+        // from src/main.
+        rahu.cli.trace.TraceCommand.class, rahu.cli.trace.ReplayCommand.class })
 public final class Main {
 
     public static void main(String[] args) {

@@ -30,6 +30,7 @@ import rahu.systemone.DecisionEngine;
  * gated by the outbound privacy check before anything leaves the process.
  */
 @Command(name = "chat",
+    mixinStandardHelpOptions = true,
     description = "In-process follow-up conversation with aggregate limits.")
 public final class ChatCommand implements Callable<Integer> {
 

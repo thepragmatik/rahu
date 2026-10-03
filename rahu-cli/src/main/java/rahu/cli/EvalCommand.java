@@ -23,6 +23,7 @@ import rahu.cli.eval.SuiteV1.Task;
  * and budget (not implemented until G09 prerequisites exist).
  */
 @Command(name = "eval",
+    mixinStandardHelpOptions = true,
     description = "Run an evaluation suite; offline by default, live requires explicit budget.")
 public final class EvalCommand implements Callable<Integer> {
 

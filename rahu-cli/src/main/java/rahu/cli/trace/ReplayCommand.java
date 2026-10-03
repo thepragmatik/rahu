@@ -51,6 +51,7 @@ import rahu.cli.live.ExitCode;
  * </ul>
  */
 @Command(name = "replay",
+    mixinStandardHelpOptions = true,
     description = "Offline policy replay of a captured run. Makes no network or tool"
         + " calls; reports unavailable when the run captured no routing inputs.")
 public final class ReplayCommand implements java.util.concurrent.Callable<Integer> {
@@ -149,31 +150,7 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
      * qualify the caller is told which rather than being handed one of them.
      */
     private Optional<Path> resolveRunDirectory() {
-        if (Files.isRegularFile(runPath.resolve("events.jsonl"))) {
-            return Optional.of(runPath);
-        }
-        if (Files.isDirectory(runPath.resolve(ReplayCapture.FILE))) {
-            return Optional.of(runPath);
-        }
-        List<Path> found = new ArrayList<>();
-        if (Files.isDirectory(runPath)) {
-            try (var stream = Files.list(runPath)) {
-                stream.filter(Files::isDirectory)
-                    .filter(d -> Files.isRegularFile(d.resolve("events.jsonl")))
-                    .forEach(found::add);
-            } catch (IOException e) {
-                System.err.println("cannot list " + runPath + ": " + e.getMessage());
-            }
-        }
-        if (found.size() == 1) {
-            return Optional.of(found.get(0));
-        }
-        if (found.size() > 1) {
-            System.err.println(runPath + " holds " + found.size() + " runs; pass the run"
-                + " directory explicitly. Candidates: "
-                + found.stream().map(p -> p.getFileName().toString()).sorted().toList());
-        }
-        return Optional.empty();
+        return RunLocator.locate(runPath);
     }
 
     // --------------------------------------------------------------- integrity
@@ -193,42 +170,12 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
      * why A16's "stop without a terminal record" matters here.
      */
     private Optional<String> integrityProblem(Path directory) {
-        Path events = directory.resolve("events.jsonl");
-        if (!Files.isRegularFile(events)) {
-            return Optional.of("no events.jsonl in " + directory.getFileName());
-        }
-        boolean started = false;
-        boolean terminated = false;
-        try {
-            for (String line : Files.readAllLines(events, StandardCharsets.UTF_8)) {
-                if (line.isBlank()) {
-                    continue;
-                }
-                JsonNode node = MAPPER.readTree(line);
-                String type = node.path("type").asText("");
-                if ("RunStarted".equals(type)) {
-                    started = true;
-                }
-                if ("RunTerminated".equals(type)) {
-                    terminated = true;
-                }
-            }
-        } catch (IOException | RuntimeException e) {
-            return Optional.of("events.jsonl is unreadable: " + e.getMessage());
-        }
-        if (!started) {
-            return Optional.of("events.jsonl has no RunStarted event");
-        }
-        if (!terminated) {
-            return Optional.of("events.jsonl has no RunTerminated event; the run did not"
-                + " complete, so it has no final routing outcome to replay against");
-        }
-        return Optional.empty();
+        return RunLocator.integrityProblem(directory);
     }
 
     private Optional<RouteResolvedRecord> recordedRoute(Path directory) {
         try {
-            for (String line : Files.readAllLines(directory.resolve("events.jsonl"),
+            for (String line : Files.readAllLines(directory.resolve(TraceFiles.EVENTS),
                 StandardCharsets.UTF_8)) {
                 if (line.isBlank()) {
                     continue;

@@ -27,6 +27,11 @@ import rahu.core.routing.PoolModel;
  */
 @Command(name = "route",
     description = "Route inspection.",
+    // `rahu route --help` answered "Unknown option" with a bare usage line, while
+    // every other top-level command printed real help. cli.md requires help
+    // examples to use consistent terminology; a command whose own help flag is
+    // unsupported cannot document itself. AUDIT-2026-10-03-f.
+    mixinStandardHelpOptions = true,
     subcommands = { RouteInspectCommand.Inspect.class })
 public final class RouteInspectCommand {
 
@@ -34,7 +39,8 @@ public final class RouteInspectCommand {
     }
 
     @Command(name = "inspect",
-        description = "Explain feasible candidates and exclusions; no decision call.")
+        description = "Explain feasible candidates and exclusions; no decision call.",
+        mixinStandardHelpOptions = true)
     public static final class Inspect implements Callable<Integer> {
 
         @Option(names = "--config", required = true, description = "Config JSON path")

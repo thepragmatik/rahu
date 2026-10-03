@@ -37,7 +37,7 @@ public final class RunTracer implements AutoCloseable {
      * @param runId the driver's run id, so the trace joins the run
      */
     public RunTracer(Path directory, String runId, String sessionId) {
-        this.writer = new TraceWriter(directory.resolve(runId).resolve("events.jsonl"));
+        this.writer = new TraceWriter(directory.resolve(runId).resolve(TraceFiles.EVENTS));
         this.runId = runId;
         this.sessionId = sessionId;
         this.startNs = System.nanoTime();

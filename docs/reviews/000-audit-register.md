@@ -774,3 +774,136 @@ silently deleted from the record.
   in-process against the real driver with fakes, and the packaged proof uses a
   hand-authored capture. The two together cover the command path and the wiring;
   neither alone would.
+
+
+---
+
+## AUDIT-2026-10-03-f — the fourth missing command, and a CLI that could not describe itself
+
+Follow-on to AUDIT-2026-10-03-e. `rahu run` is still missing (see "Still
+open"); this increment implements the other absent command and fixes two things
+the new command's own verification exposed.
+
+### `rahu trace inspect RUN_PATH` (cli.md:13)
+
+Implemented, and it exists because of a distinction nothing else covered. The
+other trace surfaces answer questions about the *run*; this one answers questions
+about the *evidence*. Both "the run degraded" and "the trace never recorded what
+the run did" look like a missing answer at the terminal, and an operator cannot
+tell them apart from a missing answer. `trace inspect` reports which events a
+trace holds, whether the record is complete, and whether a routing outcome was
+left behind.
+
+Guarantees, each enforced rather than asserted in prose:
+
+- **No payload dumps.** cli.md:50 requires that local inspection "must not dump
+  protected payloads by default". Payloads are read only to lift an allowlist of
+  scalars — route ids, terminal reason, token counts, hashes. Written as an
+  allowlist, not a blacklist: a blacklist must be updated whenever a payload grows
+  a field, and the failure mode of forgetting is printing someone's prompt to a
+  terminal. A new field here is simply not printed until someone decides it
+  should be. There is no `--dump-payloads`, deliberately — adding one later is a
+  privacy decision, not a convenience.
+- **No network, no tools**, proven by scanning the source for `HttpClient`,
+  `http://`, `OkHttp`, `URL(`, `Socket`, `openStream`, `OpenRouterProvider`,
+  `DecisionEngine`, `Tools.`, `Dispatch`, `Generat`. A behavioural test can only
+  prove a call *happened*; this proves the means is absent.
+- **Reports, does not judge.** An incomplete trace exits 5. It does not claim the
+  run failed — only that the file cannot support a claim about the whole run.
+
+### Two things the new command forced into the open
+
+**1. Two integrity predicates would have existed.** `replay` had its own; the
+new command needed one. Two copies would drift, and the copy that drifts looser
+silently starts approving incomplete traces. Extracted to `RunLocator` and
+`replay` refactored onto it, so the two commands cannot disagree about whether
+the same file is sound. A test asserts they agree on both a good and a bad file —
+that test is what would notice if the sharing ever broke.
+
+The shared predicate is stricter than `replay` was: it also rejects a **sequence
+gap**. A trace missing event 3 while starting at 1 and ending at 4 looks complete
+to a start-and-end check, and is not: events were lost, so it cannot support a
+claim about the run. One case is deliberately still tolerated — a **truncated
+final line after** `RunTerminated` **is** accepted, because the run demonstrably
+completed and only its tail was lost. Collapsing "lost the tail of a finished run"
+into "never finished" would refuse honest evidence.
+
+**2. `"events.jsonl"` was a literal in five places** — the writer and two
+readers. They agreed by luck, and that agreement is load-bearing and invisible: a
+writer appending to one name while a reader looks for another reports "no run
+trace", the same message an operator gets for pointing at the wrong directory. The
+failure would be attributed to the operator rather than to the rename. Now
+`TraceFiles`, with the writer and both readers pointing at it.
+
+### The CLI could not describe itself
+
+Found while verifying the new command by reading `--help`. **No command supported
+`--help`.** `rahu demo --help` answered `Unknown option: '--help'`; `rahu chat
+--help` failed on a missing `--config` *before* printing help, so a user could not
+see how to supply it. cli.md:47 requires that help examples use consistent
+terminology.
+
+Fixed by adding `mixinStandardHelpOptions` to every command and subcommand. The
+mixin is not inherited by subcommands — that was the first wrong fix, caught by
+re-running rather than assuming — so `config show` needed its own.
+
+`HelpSurfaceTest` pins the whole documented surface by driving `Main`, not by
+instantiating command classes: registering a command and being able to invoke it
+are different properties, and only the entry-point path sees both.
+
+### A test that overstated its own coverage
+
+My first version of `HelpSurfaceTest` was named "every command in cli.md exists"
+and silently omitted `rahu run`. That is the exact defect the file exists to
+prevent: a test whose name claims more than its body checks. Rewritten so
+`DOCUMENTED` is named "every command cli.md documents that exists", with
+`runIsTheKnownUnimplementedGap` asserting the absence **explicitly**. When `rahu
+run` lands, that test fails and the fix is to move `run` into the list — a gap
+marker that can be satisfied by weakening itself is worse than no marker.
+
+### Two failures that were mine, not the code's
+
+- Ten tests failed at once because the harness captured picocli's streams while
+  the commands print via `System.out` directly. A harness that silently captures
+  the wrong stream makes a working command look silent. Fixed at the JVM level.
+- The reader crashed on a truncated line before the integrity gate could report
+  it — so a damaged trace could never be inspected, which is exactly when an
+  operator most needs to look. The reader now parses what it can and lets the
+  shared predicate judge. The tolerance cannot make a damaged trace look sound,
+  because the exit code comes from that independent check.
+- My hand-written `replay.json` fixture was rejected by `replay` with exit 5. The
+  honest reading was that the *fixture* was wrong: it only looked like the
+  artifact. It now uses `ReplayCapture.write`, the production writer.
+
+### Proof
+
+Mutation battery, trace suites only (baseline 35/0):
+
+| Mutation | Result |
+|---|---|
+| `trace inspect` not registered on `Main` | 12 failures |
+| terminal-event check removed | 2 failures |
+| sequence-gap check removed | 1 failure |
+| corrupt/truncated-line check removed | 1 failure |
+| ambiguous parent picks first instead of refusing | 1 failure |
+| payloads reported wholesale | 1 failure |
+| integrity verdict ignored (always exit 0) | 4 failures |
+
+Help surface (baseline 5/0): mixin removed from demo → 2 failures; chat → 3;
+eval → 3; trace inspect → 3; `replay` unregistered → 1.
+
+Packaged binary: all eleven documented commands answer `--help` and `-h` with
+usage and exit 0. `trace inspect` on a real offline turn reports `COMPLETE`, two
+events, `capture=false`, and the `RunTerminated` reason; JSON form matches.
+
+### Still open
+
+- **`rahu run` (cli.md:11) is still unimplemented.** The only remaining gap in
+  the command table. G06 cannot honestly be marked PASSED until it exists.
+- A real offline `chat` turn records `RunStarted` + `RunTerminated` and **no
+  `RouteResolved`**. Offline mode routes nothing, so there is no routing outcome
+  to inspect or replay. Not yet classified as a defect — it may be correct for
+  offline mode — but it means the offline path exercises far less of the trace
+  contract than the live path does.
+- `trace.onFailure` remains parsed-but-unread.
+- `confidenceField` remains an inert config key (AUDIT-e).

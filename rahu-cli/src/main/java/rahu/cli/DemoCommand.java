@@ -16,6 +16,7 @@ import picocli.CommandLine.Spec;
  * calls; writes a metadata-only JSONL trace under .rahu/runs/.
  */
 @Command(name = "demo",
+    mixinStandardHelpOptions = true,
     description = "Deterministic offline run using built-in synthetic fixtures.")
 public final class DemoCommand implements Callable<Integer> {
 
@@ -28,7 +29,7 @@ public final class DemoCommand implements Callable<Integer> {
         String runId = UUID.randomUUID().toString();
         Path traceDir = Path.of(".rahu", "runs", runId);
         Files.createDirectories(traceDir);
-        Path trace = traceDir.resolve("events.jsonl");
+        Path trace = traceDir.resolve(rahu.cli.trace.TraceFiles.EVENTS);
 
         StringBuilder sb = new StringBuilder();
         event(sb, 1, runId, startNs, "RunStarted",

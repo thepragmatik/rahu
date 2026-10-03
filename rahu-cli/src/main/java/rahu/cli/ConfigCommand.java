@@ -26,6 +26,7 @@ import rahu.openrouter.ModelProfileCatalog;
  * read — only env-var names appear).
  */
 @Command(name = "config",
+    mixinStandardHelpOptions = true,
     description = "Validate or show the resolved configuration.",
     subcommands = { ConfigCommand.Validate.class, ConfigCommand.Show.class })
 public final class ConfigCommand {
@@ -34,6 +35,7 @@ public final class ConfigCommand {
     }
 
     @Command(name = "validate",
+    mixinStandardHelpOptions = true,
         description = "Structural validation; no model calls unless --live-check.")
     public static final class Validate implements Callable<Integer> {
 
@@ -146,7 +148,8 @@ public final class ConfigCommand {
         }
     }
 
-    @Command(name = "show", description = "Print resolved, redacted configuration.")
+    @Command(name = "show", description = "Print resolved, redacted configuration.",
+        mixinStandardHelpOptions = true)
     public static final class Show implements Callable<Integer> {
 
         @Option(names = "--config", required = true, description = "Config JSON path")
