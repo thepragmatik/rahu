@@ -311,7 +311,8 @@ rather than hidden, because neither was visible from the unit test alone.
 - **A25-A32** still rest on slice reviews rather than one test each.
 
 Tests: full `clean verify` green — 154 core / 14 openrouter / 30 systemone /
-137 cli.
+140 cli (338 total, 0 failures). Verified in `/tmp/rta-verify.log`, which records
+`ReadThenAnswerTest` running 3/3.
 
 
 ## True verification — added 2026-10-03
