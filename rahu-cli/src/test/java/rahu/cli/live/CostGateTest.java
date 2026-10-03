@@ -57,6 +57,8 @@ class CostGateTest {
     /** Counts dispatches, so a test can prove the provider was never called. */
     private static final class CountingProvider implements ModelProvider {
         private final AtomicInteger calls = new AtomicInteger();
+        /** Reported total cost in micros; null models a provider that stayed silent. */
+        Long costMicros = 500L;
 
         int calls() {
             return calls.get();
@@ -66,10 +68,59 @@ class CostGateTest {
         public ModelOutcome generate(GenerationRequest request) {
             calls.incrementAndGet();
             return new ModelOutcome.Completed("answered", List.of(),
-                new Usage(100, 20, null, 500L), "stop", java.util.Optional.empty(),
+                new Usage(100, 20, null, costMicros), "stop", java.util.Optional.empty(),
                 java.util.Optional.empty(),
                 rahu.core.model.ContinuationEnvelope.empty("test"));
         }
+    }
+
+
+    /**
+     * AUDIT-2026-10-03-u. {@code LiveTurnDriver.account} is the ONLY place a
+     * reported cost becomes a ledger outcome, and it had no direct test: both
+     * existing tests used a funded allowance with a 500-micro cost, so the
+     * uncertain branch was never taken. That is precisely how a sub-microdollar
+     * cost could settle a confident zero without any test going red.
+     */
+    @Test
+    @DisplayName("A dispatched turn with no reported cost becomes UNCERTAIN, not settled zero")
+    void unreportedCostBecomesUncertain() throws Exception {
+        Fixture result = drive(new BigDecimal("3.00"), null);
+
+        assertEquals(1, result.provider().calls(), "the turn must have dispatched");
+        assertEquals(0, result.session().ledger().settled().amount().signum(),
+            "an unreported cost on a dispatched request is not evidence of no cost "
+                + "(A10): nothing may be booked as settled");
+        assertTrue(result.session().ledger().uncertain().amount().signum() > 0,
+            "the reservation must be retained as an uncertain liability, which keeps it "
+                + "constraining admission until resolved");
+        assertEquals(0, result.session().ledger().reserved().amount().signum(),
+            "an uncertain reservation is no longer pending, so it must not stay reserved too "
+                + "-- that would double-count it against the allowance");
+    }
+
+    @Test
+    @DisplayName("A reported zero cost settles as a real zero, not as uncertain")
+    void reportedZeroSettlesAsZero() throws Exception {
+        Fixture result = drive(new BigDecimal("3.00"), 0L);
+
+        assertEquals(0, result.session().ledger().settled().amount().signum(),
+            "an exact reported 0 is a real observation of free and settles as 0");
+        assertEquals(0, result.session().ledger().uncertain().amount().signum(),
+            "a provider that says it charged nothing has told us the cost; it is known, "
+                + "so it must not be held as an uncertain liability");
+    }
+
+    @Test
+    @DisplayName("A reported non-zero cost settles at its exact amount")
+    void reportedCostSettlesExactly() throws Exception {
+        Fixture result = drive(new BigDecimal("3.00"), 1234L);
+
+        assertEquals(0, new BigDecimal("0.001234").compareTo(
+                result.session().ledger().settled().amount()),
+            "1234 micros must settle as exactly $0.001234, not a float approximation; got "
+                + result.session().ledger().settled().amount());
+        assertEquals(0, result.session().ledger().uncertain().amount().signum());
     }
 
     /** A decision engine that answers nothing, so routing cannot mask the cost gate. */
@@ -88,10 +139,15 @@ class CostGateTest {
             Instant.parse("2026-10-02T00:00:00Z"), true, true);
     }
 
-    private record Fixture(CountingProvider provider, StringWriter err, int exit) { }
+    private record Fixture(CountingProvider provider, StringWriter err, int exit,
+                           SessionState session) { }
 
     /** Drives one real turn through the driver with the given session allowance. */
     private Fixture drive(BigDecimal sessionAllowance) throws Exception {
+        return drive(sessionAllowance, 500L);
+    }
+
+    private Fixture drive(BigDecimal sessionAllowance, Long costMicros) throws Exception {
         // agent.maxCostUsd is the per-run cap the driver reserves; session.maxCostUsd is
         // the ledger allowance it reserves FROM. A small allowance therefore cannot cover
         // the per-run cap, which is the exact real-world misconfiguration under test.
@@ -128,6 +184,7 @@ class CostGateTest {
         var ref = new ModelRef("demo-fast");
         var router = new ActiveRouter(cfg, Map.of(ref, profile("demo-fast")));
         var provider = new CountingProvider();
+        provider.costMicros = costMicros;
         var boundary = new PathBoundary(root);
         var toolLoop = new ToolLoop(ToolRegistry.withWorkspace(boundary), boundary, provider,
             new ToolCallLog(), new PrivacyGate(),
@@ -151,7 +208,7 @@ class CostGateTest {
         } finally {
             System.setIn(original);
         }
-        return new Fixture(provider, errBuf, exit);
+        return new Fixture(provider, errBuf, exit, session);
     }
 
     @Test

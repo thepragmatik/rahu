@@ -85,7 +85,7 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | F-8 | MED | All transport failures collapse to `TIMEOUT`. A read timeout (ambiguous) is indistinguishable from a connect failure (definite). The ledger handles the ambiguity correctly via `markUncertain`, so cost is sound and only the diagnostic is coarse. | Would need a new `FailureKind`. |
 | ~~F-9~~ | ~~MED~~ | **FIXED** (AUDIT-p, `0e130e9`) — `tools.resultBytes` now bounds read, list and search, and non-positive caps are refused at load. Was listed here while already fixed. | — |
 | ~~F-11~~ | ~~HIGH~~ | **FIXED** (AUDIT-e) — `RouteResolver` reads it via `confidenceOf(c, in.confidenceField())`. Was listed here while already fixed. | — |
-| C-1 | MED | A sub-microdollar cost rounds to a settled **zero** instead of settling as uncertain. The only `double` in any cost path; it destroys the exact-decimal guarantee at the boundary where money enters. | Cost-path change; needs its own ledger proof. |
+| ~~C-1~~ | — | **FIXED** (AUDIT-u) — see below. The *rounds to a settled zero* half was right. The *"destroys the exact-decimal guarantee"* rationale in this row and in review 017 was **wrong** and is retracted: `asDouble()` then `Math.round` agreed with exact decimal on 400k sampled inputs. | — |
 | ~~C-2~~ | ~~MED~~ | **FIXED** (AUDIT-q) — fails closed on a typo'd, null or absent label; DEFER now only from an explicit label that passed the fit check. Was listed here while spec-mandated (`systemone.md:40`). | — |
 | C-3 | MED | `estimateTokens` silently clamps to the allowance it was passed, so one input yields different answers depending on the cap. `ContextPlan.estimatedTokens` then reports a clamped allowance as a measurement. | An estimate presented as a measurement; needs a rename or an unclamped method. |
 | ~~row 91~~ | — | **CORRECTED (AUDIT-s)** — this row was wrong twice. It said "five" while naming four, and one of the four (`routing.confidenceField`) is the key the table's own F-11 claims is fixed. Of the remainder: `decision.confidenceSemantics` is now **refused at load** (it was never a real key); `OperationRequirements.isTextAnswer` / `.structuredOutputRequired` are still inert but are future scaffolding, not inert config — see the AUDIT-l sweep. | — |
@@ -2535,3 +2535,103 @@ catch-all branch and a vacuous leak assertion) and fixed both.
 This is the second increment in a row where a green test suite was not evidence.
 **A test result you have not seen fail is not a passing test** — and neither is a
 mutation result produced by a harness you have not seen catch something.
+
+
+---
+
+## AUDIT-2026-10-03-u — C-1: a billed cost the ledger could not hold became a confident zero
+
+The register's headline for this row was right. Its stated *reason* was wrong, and
+finding that out is most of the work.
+
+### The real defect
+
+`OpenRouterProvider.parseCostMicros` did `Math.round(cost.asDouble() * 1_000_000.0)`.
+A **positive** reported cost below half a micro becomes `0`, and it returned
+`Optional.of(0L)` — *present*.
+
+`LiveTurnDriver.account` branches on presence, not value:
+
+```java
+var micros = usage.totalCostMicrosOpt();
+if (micros.isPresent()) { ...settle(..., true); } else { ...markUncertain(...); }
+```
+
+So a sub-microdollar bill took the **settle** branch as `$0.000000`. That is the
+precise outcome `TurnOutcome.costUnobserved` exists to prevent — its own comment says
+*"a caller that renders this as '$0.00' is asserting the provider billed nothing."*
+The provider billed something. We simply cannot hold it at micro resolution, so the
+honest state is the ledger's existing uncertain liability.
+
+### The rationale in my own register was wrong, and I checked before relying on it
+
+The row (and review 017) said the `double` *"destroys the exact-decimal guarantee at
+the boundary where money enters."* I searched for a disagreement before accepting that:
+
+| probe | result |
+|---|---|
+| 400k random dollar values, 6–12 decimal places | **0 disagreements** |
+| half-micro boundary, 0.4999999999999999999, 0.5 | agree |
+| 0.123456789012345678, 123456789.123456789 | agree |
+
+`asDouble()` then `Math.round` agrees with exact decimal over this range. The claim
+was reasoning by vibe, and it was retracted rather than quietly fixed. **The defect was
+never the arithmetic. It was the semantics of zero.**
+
+### The genuine precision bug was one layer down, and my first fix missed it
+
+I converted via `cost.decimalValue()` and wrote a test asserting exact conversion at
+`9223372036854.775807`. It **failed**, returning `9223372036854775000`.
+
+`decimalValue()` on a Jackson `DoubleNode` returns the decimal of the *already-rounded
+double*, so "convert through BigDecimal" was cosmetic. Jackson binds an untyped JSON
+float to `double` by default, and this repo never enabled
+`USE_BIG_DECIMAL_FOR_FLOATS` anywhere. Fixed with a second mapper used **only for
+reading provider responses** (the request mapper is untouched — nothing we send needs
+decimal fidelity). A mutation that disables the feature is now caught.
+
+### The wiring had no test at all
+
+`LiveTurnDriver.account` is the only place a reported cost becomes a ledger outcome,
+and both pre-existing `CostGateTest` cases used a funded allowance with a 500-micro
+cost. **The uncertain branch was never taken by any test.** That is precisely how a
+sub-microdollar cost could settle a confident zero with a fully green suite. Three
+tests now drive a real turn and assert `settled` / `uncertain` / `reserved` — including
+that an uncertain reservation is no longer `reserved`, which would otherwise
+double-count against the allowance.
+
+### 11 mutations, all caught
+
+| Mutation | Result |
+|---|---|
+| original: `asDouble` + `Math.round`, no guards | CAUGHT (F=2) |
+| sub-micro settles a confident zero | CAUGHT (F=1) |
+| exact `0.0` also becomes unknown | CAUGHT (E=1) |
+| truncate instead of HALF_UP | CAUGHT (F=1 E=1) |
+| negative cost accepted | CAUGHT (F=1) |
+| no overflow guard | CAUGHT (E=1) |
+| off-by-one at the Long.MAX boundary | CAUGHT (E=1) |
+| mapper reads floats as double | CAUGHT (F=1) |
+| **`account`**: absent cost settles a confident zero | CAUGHT (F=1) |
+| **`account`**: uncertain branch removed | CAUGHT (F=1) |
+| **`account`**: always uncertain, even when reported | CAUGHT (F=2) |
+
+Two of these (negative cost, overflow) were **genuine survivors** on the first pass —
+the overflow case wraps to a *negative* long, which would read as a credit and could
+pass a cost gate. The `Long.MAX_VALUE` boundary test was also my own error: I asserted
+the wrong expectation until I traced the failure to Jackson's double binding.
+
+### The failure that mattered: a mutation that would not compile
+
+My first attempt at the "revert to the original" mutation **did not compile**, and my
+harness reported it as `COMPILE-ERROR` — a label I had added, so it did not silently
+pass. But I nearly read a compile error as a caught defect. A mutation that fails to
+build is **not evidence**; it is an invalid experiment. I rewrote it as the verbatim
+original method body, which compiles and is caught (F=2).
+
+**And two `str.replace` edits in the test file silently did not match** — whitespace
+mismatch — leaving the file half-patched. The compile errors looked like a missing
+import; the real cause was that two of my five edits had never applied. Asserting that
+each edit landed, before compiling, is what exposed it.
+
+512 tests green (172 core / 21 openrouter / 36 systemone / 283 cli)

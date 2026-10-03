@@ -2,9 +2,12 @@ package rahu.openrouter;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -31,7 +34,27 @@ import rahu.core.model.Usage;
  */
 public final class OpenRouterProvider implements rahu.core.model.ModelProvider {
 
+    /** Largest micro amount the ledger can hold without overflowing a long. */
+    private static final BigDecimal LONG_MAX = BigDecimal.valueOf(Long.MAX_VALUE);
+
     private static final ObjectMapper MAPPER = new ObjectMapper();
+
+    /**
+     * Reads provider responses with JSON floats kept as exact decimals.
+     *
+     * <p>Jackson binds an untyped JSON float to {@code double} by default, so the
+     * digits the provider sent are already rounded to binary precision before any
+     * cost arithmetic happens: {@code 9223372036854.775807} arrives as
+     * {@code 9223372036854.775}. Reading it back with {@code decimalValue()} then
+     * yields a decimal that is exactly as inexact as the double it came from, which
+     * makes "convert through BigDecimal" cosmetic. This mapper keeps the literal.
+     *
+     * <p>Scoped to the response read only. The request mapper is untouched: nothing
+     * we send needs decimal fidelity, and changing it would alter unrelated
+     * serialization.
+     */
+    private static final ObjectMapper RESPONSE_MAPPER = new ObjectMapper()
+        .enable(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS);
     private static final int MAX_RESPONSE_BYTES = 4 * 1024 * 1024;
 
     private final String baseUrl;
@@ -160,7 +183,7 @@ public final class OpenRouterProvider implements rahu.core.model.ModelProvider {
 
         JsonNode root;
         try {
-            root = MAPPER.readTree(response.body());
+            root = RESPONSE_MAPPER.readTree(response.body());
         } catch (IOException e) {
             return failed(ModelOutcome.Failed.FailureKind.MALFORMED_RESPONSE,
                 "response is not valid JSON", null);
@@ -215,17 +238,46 @@ public final class OpenRouterProvider implements rahu.core.model.ModelProvider {
             parseCostMicros(usage));
     }
 
-    /** OpenRouter reports cost in dollars; the core ledger holds exact micros. */
+    /**
+     * OpenRouter reports cost in dollars; the core ledger holds exact micros.
+     *
+     * <p>The conversion is exact decimal. Reading the JSON as {@code double} and
+     * multiplying by 1e6 makes the rounding a property of binary floating point
+     * rather than of the number the provider sent.
+     *
+     * <p>A cost that is POSITIVE but rounds to zero micros is returned as {@code
+     * null} (unknown), not {@code 0}. The difference is load-bearing: a caller that
+     * sees a present zero settles a confident $0.00, asserting the provider billed
+     * nothing, when it did bill something we simply cannot hold at micro
+     * resolution. Unknown routes the reservation to the ledger's uncertain
+     * liability, which is the honest state. An exact reported {@code 0.0} is a
+     * real observation of free and does settle as zero.
+     */
     private static Long parseCostMicros(JsonNode usage) {
         JsonNode cost = usage.path("cost");
         if (!cost.isNumber()) {
             return null;
         }
-        double dollars = cost.asDouble();
-        if (Double.isNaN(dollars) || dollars < 0.0) {
+        BigDecimal dollars;
+        try {
+            dollars = cost.decimalValue();
+        } catch (NumberFormatException e) {
+            // NaN and Infinity are numeric nodes but have no decimal value.
             return null;
         }
-        return Math.round(dollars * 1_000_000.0);
+        if (dollars.signum() < 0) {
+            return null;
+        }
+        BigDecimal micros = dollars.movePointRight(6).setScale(0, RoundingMode.HALF_UP);
+        if (micros.signum() == 0 && dollars.signum() > 0) {
+            // Billed, positive, and below half a micro: unrepresentable, not free.
+            return null;
+        }
+        if (micros.compareTo(LONG_MAX) > 0) {
+            // Beyond anything a ledger can hold; refuse rather than wrap.
+            return null;
+        }
+        return micros.longValueExact();
     }
 
     private static ModelOutcome.Failed failed(ModelOutcome.Failed.FailureKind kind,

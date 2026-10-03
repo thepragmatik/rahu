@@ -51,12 +51,14 @@ Each is real and confirmed. None is a quick fix; each needs its own slice.
   compaction policy without executing it. `build-status.md` records summarisation as
   deliberately incomplete, so this is a known gap rather than a hidden one.
 
-- **Cost enters through `double`** (audit 2). `parseCostMicros` does
-  `cost.asDouble()` then `Math.round(dollars * 1e6)`, destroying the exact-decimal
-  guarantee at the one boundary where money enters, then re-wraps as
-  `BigDecimal.valueOf(micros, 6)`. Sub-microdollar costs round to a settled **zero**
-  rather than settling as uncertain. Verified this is the only `double` in any cost
-  path. Fix: `new BigDecimal(cost.asText())`, `RoundingMode.HALF_UP`, return null
+- **Cost enters through `double`** (audit 2). **PARTLY WRONG — corrected in AUDIT-u.**
+  The sub-microdollar claim was right: such a cost rounded to a settled **zero** rather
+  than settling as uncertain. The *rationale* was not. I searched for a disagreement
+  before relying on it and found none across 400k sampled inputs: `asDouble()` then
+  `Math.round` agrees with exact decimal over the real range. The precision bug was one
+  layer down — Jackson binds JSON floats to `double`, so `decimalValue()` inherits that
+  rounding and BigDecimal conversion is cosmetic without `USE_BIG_DECIMAL_FOR_FLOATS`.
+  Fixed in AUDIT-2026-10-03-u. Original text preserved below. Fix: `new BigDecimal(cost.asText())`, `RoundingMode.HALF_UP`, return null
   below one micro.
 
 - **`CompactionPlanner` fails open on a typo'd label** (audit 3). `"CONCISE"` and
