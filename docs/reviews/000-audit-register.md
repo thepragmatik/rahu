@@ -3061,3 +3061,91 @@ under test, so relaxing it would have destroyed the test.
 `clean verify` on a **fresh clone**: 184/21/36/291, BUILD SUCCESS.
 
 531 → **532 tests green**.
+
+
+---
+
+## AUDIT-2026-10-03-aa — A28: the launcher claimed a pinned JDK and pinned nothing
+
+A28 requires a "launcher verified". It had never been run.
+
+### Claim 1 — "core has no adapter DTO imports" — ENFORCED, not merely observed
+
+I checked rather than assumed, because this is the kind of invariant that is true by
+accident until it isn't. Core's `pom.xml` declares only junit; `dependency:build-classpath`
+returns an **empty compile classpath**. Every non-`java.*` import in `rahu-core/src/main`
+resolves to `rahu.core.*` — including `codeintel`, which talks LSP without a JSON library.
+
+Confirmed by mutation, not inspection: adding `import rahu.openrouter.OpenRouterProvider` to
+a core file **fails to compile** (`package rahu.openrouter does not exist`). The Maven module
+graph is the enforcement; the parent POM feeds Jackson and picocli to the adapters, not core.
+So this clause holds structurally and needs no test — a source-scanning test would assert
+something weaker than the compiler already guarantees.
+
+Note the parent `<dependencies>` inject junit/jackson/picocli into *every* module; core's
+own POM narrows itself. Anyone adding a dependency to core's POM would break the invariant
+without any test noticing — but they'd also get a compiler error the moment they imported
+anything, which is the correct failure.
+
+### Claim 2 — "launcher verified" — the launcher's own comment was FALSE
+
+    # Rahu launcher: runs the packaged CLI with the pinned JDK and preview flags.
+    exec java --enable-preview -jar "$SCRIPT_DIR/../rahu-cli/target/rahu-cli.jar" "$@"
+
+Nothing is pinned. It exec'd bare `java`, so which runtime ran Rahu depended entirely on PATH.
+
+The sharp edge: the README says `export JAVA_HOME=/path/to/jdk27`. **The launcher never read
+JAVA_HOME.** I set a correct JDK 27 there, left JDK 21 first on PATH, and it still died:
+
+    Error: LinkageError occurred while loading main class rahu.cli.Main
+    java.lang.UnsupportedClassVersionError: rahu/cli/Main has been compiled by a more
+    recent version of the Java Runtime (class file version 71.0), this version ... up to 65.0
+
+The documented setup step had **no effect on the documented launcher**. And the failure is
+opaque: it names a class file version number, not the java that ran or how to fix it.
+
+### The fix
+
+`bin/rahu` now prefers `$JAVA_HOME/bin/java`, falls back to PATH, and checks
+`java.specification.version` before exec so a mismatch is a sentence. Both failure modes
+named above are gone: PATH-jdk21 + JAVA_HOME-jdk27 now succeeds, and PATH-jdk21 alone is
+refused with `needs JDK 27 or newer, but ... is Java 21 (PATH)` plus the fix.
+
+### A test that polices the build it runs in
+
+No Java test could cover this — the behaviour under test *is* the choice of executable — so
+`LauncherTest` runs the real script in a child process with a controlled PATH.
+
+My first version ran the real `rahu-cli.jar` and **skipped itself** during `clean verify`,
+because surefire runs before packaging. A test that quietly opts out of the build it is meant
+to police is worse than no test. It now copies the launcher beside a two-class stand-in jar
+(`javac` + `jar --manifest`, `Main-Class: StandIn`) in a temp dir, so it runs on every build.
+`Tests run: 293, Skipped: 0` — before this it was `Skipped: 2`.
+
+| mutation | failing test |
+|---|---|
+| original launcher (bare `java`) | **both** |
+| version guard removed | `tooOldRuntimeIsRefusedWithGuidance` only |
+| JAVA_HOME ignored again | `javaHomeBeatsPath` only |
+| restored | green |
+
+Attribution is what makes this meaningful: `javaHomeBeatsPath` fails only when the
+executable choice regresses, and the refusal test fails only when the guard regresses.
+
+### Two fixture faults, and one probe that nearly misled me
+
+- The stand-in jar's first version had **no `Main-Class`**, so it died with "no main manifest
+  attribute". The failure text pointed at the launcher. **The launcher was right; the
+  fixture was broken.** Asserting on the product when the fixture is the thing at fault
+  wastes a cycle and can "fix" correct code.
+- A probe of mine appeared to show the version guard mis-parsing a macOS `/usr/bin/java`
+  shim (got 25, actual 27). The cause was my own probe: `bash -lc` sources a profile that
+  exports a JDK 25 `JAVA_HOME`, while the launcher runs `bash` without `-l`. The guard was
+  correct; I nearly "fixed" it. Worth stating plainly, because the evidence looked damning.
+
+### README count
+
+Adding tests tripped `DocumentedClaimsTest` (a guard I hardened earlier this session):
+README claimed 528, declarations were 530. Corrected the README to 534, per its own advice.
+
+**534 tests green** (184 core / 21 openrouter / 36 systemone / 293 cli), 0 skipped.

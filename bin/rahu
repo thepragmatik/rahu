@@ -1,5 +1,48 @@
 #!/usr/bin/env bash
-# Rahu launcher: runs the packaged CLI with the pinned JDK and preview flags.
+# Rahu launcher: runs the packaged CLI with the required JDK and preview flags.
+#
+# AUDIT-2026-10-03-aa: this comment used to claim it pinned the JDK while doing
+# nothing of the kind. It exec'd bare `java`, so which runtime ran Rahu depended
+# entirely on PATH, and every failure surfaced as an opaque
+# UnsupportedClassVersionError naming a class file version number.
+#
+# The README tells users to `export JAVA_HOME=/path/to/jdk27`. That instruction had
+# NO effect here: JAVA_HOME was set to a correct JDK 27 and PATH's java was still 21,
+# and the launcher still died. Now JAVA_HOME wins, PATH is only the fallback, and a
+# too-old runtime is reported as a version problem with the fix in the message.
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-exec java --enable-preview -jar "$SCRIPT_DIR/../rahu-cli/target/rahu-cli.jar" "$@"
+JAR="$SCRIPT_DIR/../rahu-cli/target/rahu-cli.jar"
+
+if [[ ! -f "$JAR" ]]; then
+  echo "rahu: the packaged CLI is missing at $JAR" >&2
+  echo "     Build it with: ./mvnw -DskipTests package" >&2
+  exit 1
+fi
+
+# Prefer JAVA_HOME - that is what the README tells people to set, so it is what they
+# must be obeyed by. Fall back to java on PATH, which is all a bare invocation has.
+if [[ -n "${JAVA_HOME:-}" && -x "$JAVA_HOME/bin/java" ]]; then
+  JAVA="$JAVA_HOME/bin/java"
+  JAVA_SOURCE="JAVA_HOME=$JAVA_HOME"
+else
+  JAVA="$(command -v java || true)"
+  JAVA_SOURCE="PATH"
+  if [[ -z "$JAVA" ]]; then
+    echo "rahu: no java found." >&2
+    echo "     Install JDK 27, or point JAVA_HOME at it: export JAVA_HOME=/path/to/jdk27" >&2
+    exit 1
+  fi
+fi
+
+# Check the version BEFORE exec so a mismatch is a sentence, not a class file number.
+# The classes are compiled to 71 (Java 27); an older runtime cannot load them at all.
+major="$("$JAVA" -XshowSettings:properties -version 2>&1 \
+  | awk -F'= *' '/java\.specification\.version/ {print $2; exit}')"
+if [[ -n "$major" ]] && (( major < 27 )); then
+  echo "rahu: needs JDK 27 or newer, but $JAVA is Java $major ($JAVA_SOURCE)." >&2
+  echo "     Point JAVA_HOME at a JDK 27 and retry: export JAVA_HOME=/path/to/jdk27" >&2
+  exit 1
+fi
+
+exec "$JAVA" --enable-preview -jar "$JAR" "$@"
