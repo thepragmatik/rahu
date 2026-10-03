@@ -37,6 +37,144 @@ class WorkspaceToolsTest {
         assertFalse_(body.contains("target"), "excluded dirs never appear");
     }
 
+    @Test
+    @DisplayName("tools.resultBytes is a real limit, not a decorative config key")
+    void configuredResultBytesIsEnforced() throws Exception {
+        // tools.resultBytes was parsed, schema-exposed and NEVER APPLIED: the read
+        // cap was the hardcoded constant MAX_READ_BYTES, so an operator setting
+        // tools.resultBytes=2048 got the 64 KiB cap and no warning. This audit had
+        // recorded the key as "blocked on a spec decision" for five increments; the
+        // spec had in fact decided it twice -
+        // configuration.md:24 lists `resultBytes` as a `tools` key, and tools.md:5
+        // requires a descriptor to carry a "result byte limit".
+        String big = "x".repeat(5000);
+        Files.writeString(root.resolve("big.txt"), big);
+
+        // A configured limit SMALLER than the file must bite.
+        var small = new WorkspaceTools(new PathBoundary(root), 2048);
+        var r = small.read("big.txt", null, null);
+        assertEquals(ToolResult.Status.SUCCESS, r.status());
+        assertTrue(r.truncated(),
+            "a 5000-byte file under a configured 2048-byte limit must report truncation");
+        assertTrue(r.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length
+                <= 2048 + 256,
+            "the returned content must respect the configured limit, not the "
+                + "built-in 64 KiB one: got "
+                + r.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length);
+        assertTrue(r.content().contains("[truncated:"),
+            "truncation must be disclosed: " + r.content());
+
+        // And a limit LARGER than the file must NOT truncate.
+        var large = new WorkspaceTools(new PathBoundary(root), 1024 * 1024);
+        var ok = large.read("big.txt", null, null);
+        assertEquals(false, ok.truncated(),
+            "a file inside a larger configured limit must come back whole");
+        assertTrue(ok.content().contains(big), "and must not be cut short");
+
+        // The default must remain 64 KiB, or every existing bound changes meaning.
+        var defaulted = new WorkspaceTools(new PathBoundary(root));
+        assertEquals(false, defaulted.read("big.txt", null, null).truncated(),
+            "the default limit leaves a 5000-byte file intact");
+    }
+
+    @Test
+    @DisplayName("tools.resultBytes bounds search results too, and the match cap stays separate")
+    void configuredResultBytesBoundsSearchResults() throws Exception {
+        // tools.md:5 says "a RESULT byte limit", so it bounds every result, not
+        // just read. And the per-file SCAN bound must stay independent: if a small
+        // result cap also shrank how much of a file the search read, a search would
+        // stop finding text it was entitled to match and report a clean "no
+        // matches" - absence of evidence presented as evidence of absence.
+        Files.writeString(root.resolve("hits.txt"),
+            "needle one\n".repeat(400));
+
+        var roomy = new WorkspaceTools(new PathBoundary(root), 1024 * 1024);
+        var many = roomy.search("needle", ".");
+        assertTrue(many.content().contains("[truncated: match limit"),
+            "400 matches must hit the 100-match cap: " + many.content().length());
+
+        var tiny = new WorkspaceTools(new PathBoundary(root), 300);
+        var few = tiny.search("needle", ".");
+        int bytes = few.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        assertTrue(few.truncated(), "a search result over the configured cap truncates");
+        assertTrue(bytes <= 300 + 256,
+            "the search result must respect tools.resultBytes, got " + bytes);
+        assertTrue(few.content().contains("[truncated:"),
+            "and must say so rather than return a short result that looks complete");
+
+        // THE DISTINGUISHING INPUT. Above, the result already tripped the 100-MATCH
+        // cap, so truncated() and the marker were true for reasons that had nothing
+        // to do with the byte cap - which is why a mutation removing the byte cap
+        // from search survived. This case has FEW matches (under the match cap) whose
+        // rendered lines are nonetheless over the byte cap. Only here is the byte
+        // cap the sole reason for truncation.
+        // In its own directory: hits.txt is still present from the first half of this
+        // test, and searching "." would include its 400 matches. Confining the probe
+        // is what makes the match count 2.
+        Path fewDir = Files.createDirectories(root.resolve("fewonly"));
+        Files.writeString(fewDir.resolve("few.txt"),
+            "needle " + "w".repeat(900) + "\nneedle " + "w".repeat(900) + "\n");
+        var fewRoomy = new WorkspaceTools(new PathBoundary(root), 1024 * 1024);
+        var unfettered = fewRoomy.search("needle", "fewonly");
+        assertTrue(!unfettered.truncated(),
+            "two matches is under the match cap and a 1 MiB cap is far above 1.8 KiB, "
+                + "so this must NOT be truncated: " + unfettered.content().length());
+        int unfetteredBytes = unfettered.content()
+            .getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+
+        var byteCapped = new WorkspaceTools(new PathBoundary(root), 400);
+        var capped = byteCapped.search("needle", "fewonly");
+        int cappedBytes = capped.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        assertTrue(cappedBytes <= 400 + 256,
+            "the search byte cap must bite even when the match cap does not: got "
+                + cappedBytes + " of an unfettered " + unfetteredBytes);
+        assertTrue(capped.content().contains("tools.resultBytes"),
+            "and the disclosure must name the BYTE cap, not the match cap: "
+                + capped.content());
+        // The FLAG, not just the bytes. A mutation that drops byteTruncated from the
+        // returned boolean leaves the body already capped, so every byte assertion
+        // above still passes - while truncated() reports FALSE for a result that was
+        // visibly cut. That flag is what the caller records and what the trace
+        // carries, so a false "complete" on a truncated result is the unobserved-as-
+        // whole defect one level down.
+        assertTrue(capped.truncated(),
+            "a result cut by the byte cap must report truncated=true even when the "
+                + "match cap did not fire");
+
+        // The scan bound is independent: with a generous result cap the search must
+        // still find matches in a file far larger than a tiny result cap.
+        var probe = new WorkspaceTools(new PathBoundary(root), 1024 * 1024);
+        assertTrue(probe.search("needle", ".").content().contains("hits.txt"),
+            "a small result cap must not stop the search reading enough to match");
+    }
+
+    @Test
+    @DisplayName("tools.resultBytes bounds list results too")
+    void configuredResultBytesBoundsListResults() throws Exception {
+        // The same rule as read and search: 500 paths can exceed a small cap, and a
+        // list that comes back short with no marker reads as "that is all there is".
+        for (int i = 0; i < 40; i++) {
+            Files.writeString(root.resolve("f" + i + ".txt"), "x");
+        }
+        var tiny = new WorkspaceTools(new PathBoundary(root), 200);
+        var r = tiny.list(".", 2);
+        int bytes = r.content().getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        assertTrue(r.truncated(), "an oversized list must report truncation");
+        assertTrue(bytes <= 200 + 256, "list result must respect the cap, got " + bytes);
+        assertTrue(r.content().contains("[truncated:"),
+            "and must disclose it: " + r.content());
+    }
+
+    @Test
+    @DisplayName("a nonsensical resultBytes is rejected at bind time, not clamped silently")
+    void nonPositiveResultBytesIsRejected() {
+        assertThrows(IllegalArgumentException.class,
+            () -> new WorkspaceTools(new PathBoundary(root), 0),
+            "a zero byte limit would silently truncate every result to nothing");
+        assertThrows(IllegalArgumentException.class,
+            () -> new WorkspaceTools(new PathBoundary(root), -1));
+    }
+
     private static void assertFalse_(boolean cond, String msg) {
         org.junit.jupiter.api.Assertions.assertFalse(cond, msg);
     }

@@ -13,6 +13,7 @@ import rahu.core.model.ModelProvider;
 import rahu.core.privacy.PrivacyGate;
 import rahu.core.privacy.Provenance;
 import rahu.core.tools.PathBoundary;
+import rahu.core.tools.WorkspaceTools;
 import rahu.core.tools.ToolCallLog;
 import rahu.core.tools.ToolRegistry;
 import rahu.systemone.DecisionEngine;
@@ -46,6 +47,29 @@ public final class LiveAssembly {
     }
 
     private LiveAssembly() {
+    }
+
+    /**
+     * The effective {@code tools.resultBytes} cap.
+     *
+     * <p>Extracted so the config-to-executor path is TESTABLE on its own. It is not
+     * decoration: a mutation that made assembly pass {@link
+     * WorkspaceTools#DEFAULT_RESULT_BYTES} instead of the configured value survived
+     * every executor test, because those tests construct {@code WorkspaceTools}
+     * directly and never go through assembly. Only a test that reads the value the
+     * way assembly does can catch a cut in the wiring.
+     */
+    public static int resultBytes(RahuConfig cfg) {
+        Integer configured = cfg.tools().resultBytes();
+        if (configured != null) {
+            return configured;
+        }
+        // Only reachable for a hand-built ToolsConfig: ConfigLoader materialises
+        // `resultBytes` with asInt(65536), so a loader-built config never yields null.
+        // Kept because the record allows it, and a null here must not become a ZERO
+        // cap - that would truncate every tool result to nothing while still
+        // reporting success.
+        return WorkspaceTools.DEFAULT_RESULT_BYTES;
     }
 
     /**
@@ -91,16 +115,32 @@ public final class LiveAssembly {
         }
 
         var boundary = new PathBoundary(Path.of(cfg.tools().root()), cfg.tools().exclusions());
-        var loop = new ToolLoop(workspaceRegistry(cfg, boundary), boundary, provider,
+        var loop = toolLoop(cfg, boundary, provider, decision, provenance);
+
+        return Result.of(new Stack(cfg, provider, decision, router,
+            newSession(cfg, sessionLabel), boundary, loop, provenance));
+    }
+
+    /**
+     * The one place a live {@link ToolLoop} is constructed.
+     *
+     * <p>Extracted from {@link #build} so the config-to-executor wiring is testable
+     * without a credential, a catalog fetch and a profile-evidence file. A helper
+     * that only computes the cap was NOT enough: a mutation replacing
+     * {@code resultBytes(cfg)} with the default at the original call site passed
+     * every test, because nothing could observe what assembly handed the loop. The
+     * cap is now passed through this method and read back off the built loop.
+     */
+    public static ToolLoop toolLoop(RahuConfig cfg, PathBoundary boundary, ModelProvider provider,
+        DecisionEngine decision, Provenance provenance) {
+        return new ToolLoop(workspaceRegistry(cfg, boundary), boundary, provider,
             new ToolCallLog(), new PrivacyGate(), provenance,
             cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep(),
             new InjectionGate(decision, injectionMode(cfg.injection()),
                 cfg.injection().thresholdOrDefault()),
             new SearchReranker(decision, rerankMode(cfg.search()),
-                cfg.search().maxCandidatesOrDefault()));
-
-        return Result.of(new Stack(cfg, provider, decision, router,
-            newSession(cfg, sessionLabel), boundary, loop, provenance));
+                cfg.search().maxCandidatesOrDefault()),
+            resultBytes(cfg));
     }
 
     /** Where the assembly writes; kept as a pair so no command invents its own split. */

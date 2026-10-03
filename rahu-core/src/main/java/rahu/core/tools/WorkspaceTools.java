@@ -20,15 +20,54 @@ public final class WorkspaceTools {
 
     private static final int MAX_LIST_ENTRIES = 500;
     private static final int MAX_LIST_DEPTH = 3;
-    private static final int MAX_READ_BYTES = 64 * 1024;
+    /**
+     * The documented default cap, used when {@code tools.resultBytes} is absent.
+     *
+     * <p>This used to be the cap ITSELF rather than the default, which is why
+     * {@code tools.resultBytes} was parsed, schema-exposed and never applied: an
+     * operator who set {@code resultBytes: 2048} still got 64 KiB with no warning.
+     * configuration.md:24 lists it as a real {@code tools} key and tools.md:5
+     * requires a descriptor to carry a "result byte limit", so the configured
+     * value has to be the one that bites.
+     */
+    public static final int DEFAULT_RESULT_BYTES = 64 * 1024;
+
     private static final int MAX_READ_LINES = 1000;
     private static final int MAX_SEARCH_MATCHES = 100;
-    private static final int MAX_SEARCH_BYTES = 64 * 1024;
+
+    /**
+     * Bytes scanned from any ONE file during {@code workspace.search}.
+     *
+     * <p>Deliberately separate from {@code resultBytes}: this bounds how much of a
+     * file the search reads while matching, whereas {@code resultBytes} bounds the
+     * result handed back to the model. Conflating them would make a small configured
+     * result cap silently change which matches a search can FIND, rather than only
+     * how much it reports - a search would stop matching text it was entitled to look
+     * at, and report a clean "no matches" instead.
+     */
+    private static final int MAX_SEARCH_BYTES_PER_FILE = 64 * 1024;
 
     private final PathBoundary boundary;
+    private final int resultBytes;
 
     public WorkspaceTools(PathBoundary boundary) {
+        this(boundary, DEFAULT_RESULT_BYTES);
+    }
+
+    /**
+     * @param resultBytes the per-result byte cap ({@code tools.resultBytes}). Must
+     *     be positive: a zero or negative cap would silently truncate every result
+     *     to nothing, which reads as "the file is empty" rather than as a
+     *     misconfiguration. Rejected here so the operator finds out at startup
+     *     instead of wondering why every tool call comes back blank.
+     */
+    public WorkspaceTools(PathBoundary boundary, int resultBytes) {
+        if (resultBytes <= 0) {
+            throw new IllegalArgumentException(
+                "tools.resultBytes must be positive, got " + resultBytes);
+        }
         this.boundary = boundary;
+        this.resultBytes = resultBytes;
     }
 
     /** Dispatches a validated tool call, enforcing the A09 call-ID contract. */
@@ -78,7 +117,13 @@ public final class WorkspaceTools {
             List<String> out = truncated ? collected.subList(0, MAX_LIST_ENTRIES) : collected;
             String body = String.join("\n", out) + (truncated
                 ? "\n[truncated: entry limit " + MAX_LIST_ENTRIES + " reached]" : "");
-            return ToolResult.success(body, truncated);
+            boolean byteTruncated = body.getBytes(StandardCharsets.UTF_8).length > resultBytes;
+            if (byteTruncated) {
+                body = new String(body.getBytes(StandardCharsets.UTF_8), 0, resultBytes,
+                        StandardCharsets.UTF_8)
+                    + "\n[truncated: tools.resultBytes " + resultBytes + " reached]\n";
+            }
+            return ToolResult.success(body, truncated || byteTruncated);
         } catch (PathBoundary.BoundaryViolation e) {
             return ToolResult.invalid(e.reason());
                 } catch (UncheckedIOException e) {
@@ -100,8 +145,8 @@ public final class WorkspaceTools {
             }
             byte[] raw = Files.readAllBytes(file);
             boolean byteTruncated = false;
-            if (raw.length > MAX_READ_BYTES) {
-                raw = java.util.Arrays.copyOf(raw, MAX_READ_BYTES);
+            if (raw.length > resultBytes) {
+                raw = java.util.Arrays.copyOf(raw, resultBytes);
                 byteTruncated = true;
             }
             String text = new String(raw, StandardCharsets.UTF_8);
@@ -131,7 +176,8 @@ public final class WorkspaceTools {
             }
             boolean truncated = byteTruncated || lineTruncated;
             if (truncated) {
-                sb.append("[truncated: read limit reached (64 KiB / 1000 lines)]\n");
+                sb.append("[truncated: read limit reached (" + resultBytes
+                    + " bytes / " + MAX_READ_LINES + " lines)]\n");
             }
             return ToolResult.success(sb.toString(), truncated);
         } catch (PathBoundary.BoundaryViolation e) {
@@ -164,8 +210,8 @@ public final class WorkspaceTools {
                     String content;
                     try {
                         byte[] raw = Files.readAllBytes(p);
-                        if (raw.length > MAX_SEARCH_BYTES) {
-                            raw = java.util.Arrays.copyOf(raw, MAX_SEARCH_BYTES);
+                        if (raw.length > MAX_SEARCH_BYTES_PER_FILE) {
+                            raw = java.util.Arrays.copyOf(raw, MAX_SEARCH_BYTES_PER_FILE);
                         }
                         content = new String(raw, StandardCharsets.UTF_8);
                     } catch (IOException io) {
@@ -190,9 +236,19 @@ public final class WorkspaceTools {
                 }
             }
             String body = String.join("\n", hits) + (truncated
-                ? "\n[truncated: match limit " + MAX_SEARCH_MATCHES + " reached]" : "")
-                + (skippedUnreadable ? "\n[note: some entries were unreadable and not searched]" : "");
-            return ToolResult.success(body, truncated || skippedUnreadable);
+                ? "\n[truncated: match limit " + MAX_SEARCH_MATCHES + " reached]\n" : "")
+                + (skippedUnreadable ? "\n[note: some entries were unreadable and not searched]\n" : "");
+            // tools.md:5 bounds the RESULT, so the configured cap applies here as it
+            // does to read. The disclosure line is kept even when the byte cap is
+            // what truncated, so the model is never handed a short result that looks
+            // like a complete one.
+            boolean byteTruncated = body.getBytes(StandardCharsets.UTF_8).length > resultBytes;
+            if (byteTruncated) {
+                body = new String(body.getBytes(StandardCharsets.UTF_8), 0, resultBytes,
+                        StandardCharsets.UTF_8)
+                    + "\n[truncated: tools.resultBytes " + resultBytes + " reached]\n";
+            }
+            return ToolResult.success(body, truncated || skippedUnreadable || byteTruncated);
         } catch (PathBoundary.BoundaryViolation e) {
             return ToolResult.invalid(e.reason());
                 } catch (UncheckedIOException e) {

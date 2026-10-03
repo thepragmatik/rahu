@@ -1946,3 +1946,127 @@ and got a `FileNotFoundError` on the script's own text. Same class as the
 `write()`/`read()` signature guess from last increment — assuming an API's shape
 instead of checking it.
 
+---
+
+## AUDIT-2026-10-03-p — a config key I called "blocked on the spec" for five increments
+
+Started by verifying the two "still open" items AUDIT-m named. **Both were already
+fixed.** `DemoCommand` goes through `RunTracer` (AUDIT-j fixed it; my register had
+carried the stale line through five entries). `trace.onFailure` is validated at load
+(AUDIT-g fixed it). So the register's "still open" list had become unreliable, and the
+next item on it — `tools.resultBytes` — was recorded five times as *"blocked on a spec
+decision"*.
+
+### It was never blocked. The spec had decided it twice.
+
+- `configuration.md:24` lists `resultBytes` as a real `tools` key.
+- `tools.md:5`: *"A descriptor has a stable name/version, description, JSON input
+  schema, effect class, timeout, **result byte limit** and deterministic authorisation
+  policy."*
+
+And the cap was not missing either — `WorkspaceTools` enforced a hardcoded
+`MAX_READ_BYTES = 64 * 1024`. The defect was narrower and duller than I had recorded:
+**the configured value never reached the constant.** An operator setting
+`tools.resultBytes: 2048` got 64 KiB and no warning.
+
+I only found this because I finally read the specs instead of trusting my own note.
+
+### A wrong conclusion I have to record
+
+Mid-investigation I grepped for `MAX_READ_BYTES|65536|truncat` in
+`rahu-cli/.../tools/WorkspaceTools.java` — **a path I had assumed**. It does not
+exist; the class is in `rahu-core`. The grep found nothing, and I wrote that
+`workspace.read` had *"no byte cap at all — not even the spec-mandated 64 KiB"*.
+
+**That was false.** The cap is enforced. I concluded from an absence produced by
+searching the wrong file, which is the worst way to be wrong: absence of evidence
+treated as evidence of absence, the exact shape this register keeps documenting in
+other code. Same class as the `write()`/`read()` signature guess and the
+`subprocess.run` argument-list guess — assume an API's location or shape, then reason
+confidently from the resulting error.
+
+### The fix
+
+- `DEFAULT_RESULT_BYTES = 64 KiB` becomes the *default*, not the cap.
+- The configured value bounds **every** result: `read`, `list` and `search`.
+- Truncation is always disclosed, and the marker names the limit that fired.
+- Non-positive caps are rejected at construction: a zero cap would truncate every
+  result to nothing while still reporting success.
+- The per-file **scan** bound in `search` stays deliberately separate from the
+  **result** bound, as `MAX_SEARCH_BYTES_PER_FILE`. Conflating them would make a small
+  result cap change which matches a search can *find* — a search would stop matching
+  text it was entitled to look at and report a clean "no matches".
+
+### A second defect, found by running the binary rather than reading tests
+
+`rahu run --config <resultBytes: 0>` exited **0**. `ConfigLoader` binds with
+`n.path("resultBytes").asInt(65536)`, and `asInt` validates nothing, so the schema's
+own `"minimum": 1` was never enforced. A schema that cannot stop an operator is
+documentation. The same unvalidated `asInt` applied to `maxCallsPerStep`, where zero
+would make the loop refuse every call while reporting a completed answer. Both are now
+refused at load, naming the offending value.
+
+Live proof after the fix:
+
+```
+resultBytes=    0 -> rc=2  config invalid: tools.resultBytes must be at least 1, got 0; ...
+resultBytes=   -5 -> rc=2  config invalid: tools.resultBytes must be at least 1, got -5; ...
+resultBytes=    1 -> rc=0  Cost unavailable · 1 generation step ...
+resultBytes= 2000 -> rc=0  Cost unavailable · 1 generation step ...
+```
+
+### Mutations — and the two that mattered most
+
+| Mutation | Failures |
+|---|---|
+| **assembly call site passes the default, ignoring the helper** | **0 → 1** |
+| **loop ignores the cap handed to it** | **1** |
+| **loop accessor lies (reports the default)** | **1** |
+| read cap back to hardcoded 64 KiB | 1 |
+| search drops `truncated` from the returned flag | **0 → 1** |
+| list drops `truncated` from the returned flag | 1 |
+| truncation marker suppressed | 1 |
+| non-positive silently clamped to 1 | 1 |
+| scan bound conflated with result cap | 1 |
+| default changed to 1 byte | 4 |
+| loader: `resultBytes` validation removed | 1 |
+| loader: `maxCallsPerStep` validation removed | 1 |
+| loader: rejects the legal value `1` | 1 |
+
+**The call-site mutation is the one worth remembering.** My first wiring test asserted
+`LiveAssembly.resultBytes(cfg)` — the *helper*. A mutation replacing the helper's result
+at the original call site passed everything, because the helper was still correct and
+nothing could see what assembly handed the loop. No amount of testing a pure function
+proves a call site uses it. Fixed by extracting `LiveAssembly.toolLoop(...)` — the one
+place a live loop is constructed — and reading `loop.resultBytes()` off the built
+object.
+
+**The search flag mutation is the second.** Dropping `byteTruncated` from
+`search`'s return leaves the body already capped, so every byte-length assertion still
+passed while `truncated()` reported **false for a visibly cut result**. My first test
+also could not see it, because it only used inputs that tripped the 100-*match* cap, so
+`truncated()` was already true for unrelated reasons. The distinguishing input is a
+result **under** the match cap but **over** the byte cap — where the byte cap is the
+sole reason for truncation. Asserting the FLAG, not just the bytes and the marker, is
+what caught it.
+
+### One survivor I chose not to force
+
+"helper returns 0 when the key is absent" survived, and I traced why rather than
+adding a test: `ConfigLoader` materialises `resultBytes` with `asInt(65536)`, so a
+loader-built config **never** yields null. The branch is reachable only from a
+hand-built `ToolsConfig`. Writing a test for it would require constructing an
+impossible configuration to prove a guard on a path nothing takes; I documented the
+reason in the code instead. Recorded here so the survivor is visible rather than
+quietly dropped.
+
+### 470 tests green (163 core / 14 openrouter / 30 systemone / 263 cli)
+
+### The stale-register finding, which is the real lesson
+
+Five "still open" lines were carried across five increments without being checked, and
+two were already fixed. Register hygiene is now a standing check: **before working any
+item a register lists, verify it is still open.** A status list that nobody re-verifies
+is a list of beliefs, not of facts — and I had been reasoning from it as if it were
+evidence, which is the failure this whole audit exists to catch.
+

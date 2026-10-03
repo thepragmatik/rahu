@@ -45,6 +45,7 @@ public final class ToolLoop {
     private final ToolCallLog callLog;
     private final PrivacyGate gate;
     private final WorkspaceTools workspace;
+    private final int resultBytes;
     private final Provenance provenance;
     private final InjectionGate injection;
     private final SearchReranker reranker;
@@ -74,12 +75,25 @@ public final class ToolLoop {
     public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
         ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
         InjectionGate injection, SearchReranker reranker) {
+        this(registry, boundary, provider, callLog, gate, provenance, maxCallsPerStep,
+            injection, reranker, WorkspaceTools.DEFAULT_RESULT_BYTES);
+    }
+
+    /**
+     * @param resultBytes the {@code tools.resultBytes} cap. It reaches the workspace
+     *     executor here because that is where results are actually produced; the
+     *     descriptors carry the policy but the executor is what truncates.
+     */
+    public ToolLoop(ToolRegistry registry, PathBoundary boundary, ModelProvider provider,
+        ToolCallLog callLog, PrivacyGate gate, Provenance provenance, int maxCallsPerStep,
+        InjectionGate injection, SearchReranker reranker, int resultBytes) {
         this.registry = registry;
         this.boundary = boundary;
         this.provider = provider;
         this.callLog = callLog;
         this.gate = gate;
-        this.workspace = new WorkspaceTools(boundary);
+        this.workspace = new WorkspaceTools(boundary, resultBytes);
+        this.resultBytes = resultBytes;
         this.provenance = provenance;
         this.injection = injection;
         this.reranker = reranker == null
@@ -143,6 +157,20 @@ public final class ToolLoop {
     public List<rahu.core.model.ToolDescriptor> descriptorsForThisTurn() {
         return descriptors(permittedThisTurn == null ? registry
             : registry.restrictedTo(permittedThisTurn));
+    }
+
+
+    /**
+     * The effective {@code tools.resultBytes} cap this loop was built with.
+     *
+     * <p>Exposed so the wiring is OBSERVABLE. Asserting only {@code
+     * LiveAssembly.resultBytes(cfg)} proved the helper correct while leaving the call
+     * site unverified: a mutation replacing {@code resultBytes(cfg)} with the default
+     * passed every test, because nothing could see what assembly handed the loop.
+     * Reading the cap off a built loop closes that gap without needing credentials.
+     */
+    public int resultBytes() {
+        return resultBytes;
     }
 
     /** The tool schemas the generation request advertises. */

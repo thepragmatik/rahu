@@ -304,16 +304,42 @@ public final class ConfigLoader {
             optString(n, "offlineFixture"));
     }
 
+    /**
+     * Bind {@code tools}, validating the two numeric keys.
+     *
+     * <p>{@code asInt} performs no validation, so {@code resultBytes: 0} used to load
+     * clean and run clean: the cap reached the executor as zero and would truncate
+     * every tool result to nothing while still reporting success. The committed
+     * schema already declared {@code "minimum": 1}; the loader simply never enforced
+     * it, and a schema that cannot stop an operator is documentation. Found by
+     * running the packaged binary with {@code resultBytes: 0} and getting exit 0.
+     *
+     * <p>{@code maxCallsPerStep} gets the same treatment for the same reason: zero
+     * or negative would make the tool loop refuse every call while reporting a
+     * completed answer.
+     */
     private RahuConfig.ToolsConfig bindTools(JsonNode n) {
         if (n == null) {
             throw new ConfigError("tools section required");
+        }
+        int resultBytes = n.path("resultBytes").asInt(65536);
+        if (resultBytes < 1) {
+            throw new ConfigError("tools.resultBytes must be at least 1, got "
+                + resultBytes + "; it bounds each tool result, and a smaller value "
+                + "would truncate every result to nothing");
+        }
+        int maxCalls = n.path("maxCallsPerStep").asInt(8);
+        if (maxCalls < 1) {
+            throw new ConfigError("tools.maxCallsPerStep must be at least 1, got "
+                + maxCalls + "; it bounds tool calls per step, so a smaller value "
+                + "would refuse every call");
         }
         return new RahuConfig.ToolsConfig(
             n.path("root").asText("."),
             stringList(n.get("enabled")),
             n.has("exclusions") ? stringList(n.get("exclusions")) : List.of(),
-            n.path("maxCallsPerStep").asInt(8),
-            n.path("resultBytes").asInt(65536));
+            maxCalls,
+            resultBytes);
     }
 
     /**
