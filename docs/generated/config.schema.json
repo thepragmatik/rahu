@@ -1,153 +1,320 @@
 {
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Rahu configuration v1",
-  "type": "object",
-  "required": ["schemaVersion", "mode", "decision", "generation", "routing",
-    "pools", "session", "tools", "trace", "privacy"],
-  "properties": {
-    "schemaVersion": {"const": 1},
-    "mode": {"enum": ["offline", "live"]},
-    "decision": {
-      "type": "object",
-      "properties": {
-        "adapter": {"type": "string"},
-        "baseUrl": {"type": "string"},
-        "compatibilityProfile": {"type": "string"},
-        "model": {"type": "string"},
-        "apiKeyEnv": {"type": "string"},
-        "timeoutMillis": {"type": "integer", "minimum": 1},
-        "costMode": {"enum": ["local-unbilled", "configured-tariff"]}
-      }
+  "$schema" : "https://json-schema.org/draft/2020-12/schema",
+  "title" : "Rahu configuration v1",
+  "type" : "object",
+  "required" : [ "schemaVersion", "mode", "decision", "generation", "routing", "pools", "session", "tools", "trace", "privacy" ],
+  "properties" : {
+    "schemaVersion" : {
+      "const" : 1
     },
-    "generation": {
-      "type": "object",
-      "properties": {
-        "adapter": {"type": "string"},
-        "baseUrl": {"type": "string"},
-        "apiKeyEnv": {"type": "string"},
-        "requireParameters": {"type": "boolean"}
-      }
+    "mode" : {
+      "enum" : [ "offline", "live" ]
     },
-    "routing": {
-      "type": "object",
-      "properties": {
-        "mode": {"enum": ["shadow", "active"]},
-        "pool": {"type": "string"},
-        "baseline": {"type": "string", "pattern": "^[a-z0-9-]+@(default|none|minimal|low|medium|high|xhigh|max)$"},
-        "fallback": {"type": "string", "pattern": "^[a-z0-9-]+@(default|none|minimal|low|medium|high|xhigh|max)$"},
-        "confidenceField": {"type": "string"},
-        "confidenceFloor": {"type": "number", "minimum": 0, "maximum": 1},
-        "maximumCandidates": {"type": "integer", "minimum": 1, "maximum": 32}
-      }
+    "decision" : {
+      "type" : "object",
+      "properties" : {
+        "adapter" : {
+          "type" : "string"
+        },
+        "baseUrl" : {
+          "type" : "string"
+        },
+        "compatibilityProfile" : {
+          "type" : "string"
+        },
+        "model" : {
+          "type" : "string"
+        },
+        "apiKeyEnv" : {
+          "type" : "string"
+        },
+        "timeoutMillis" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "costMode" : {
+          "enum" : [ "local-unbilled", "configured-tariff" ]
+        }
+      },
+      "additionalProperties" : false
     },
-    "pools": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "object",
-        "properties": {
-          "models": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "alias": {"type": "string"},
-                "id": {"type": "string"},
-                "reasoning": {"type": "array", "items": {"enum":
-                  ["none", "minimal", "low", "medium", "high", "xhigh", "max", "default"]}},
-                "description": {"type": "string"}
+    "generation" : {
+      "type" : "object",
+      "properties" : {
+        "adapter" : {
+          "type" : "string"
+        },
+        "baseUrl" : {
+          "type" : "string"
+        },
+        "apiKeyEnv" : {
+          "type" : "string"
+        },
+        "requireParameters" : {
+          "type" : "boolean"
+        }
+      },
+      "additionalProperties" : false
+    },
+    "routing" : {
+      "type" : "object",
+      "properties" : {
+        "mode" : {
+          "enum" : [ "shadow", "active" ]
+        },
+        "pool" : {
+          "type" : "string"
+        },
+        "baseline" : {
+          "type" : "string",
+          "pattern" : "^[a-z0-9-]+@(default|none|minimal|low|medium|high|xhigh|max)$"
+        },
+        "fallback" : {
+          "type" : "string",
+          "pattern" : "^[a-z0-9-]+@(default|none|minimal|low|medium|high|xhigh|max)$"
+        },
+        "confidenceField" : {
+          "type" : "string"
+        },
+        "confidenceFloor" : {
+          "type" : "number",
+          "minimum" : 0,
+          "maximum" : 1
+        },
+        "maximumCandidates" : {
+          "type" : "integer",
+          "minimum" : 1,
+          "maximum" : 32
+        }
+      },
+      "additionalProperties" : false
+    },
+    "pools" : {
+      "type" : "object",
+      "additionalProperties" : {
+        "type" : "object",
+        "properties" : {
+          "models" : {
+            "type" : "array",
+            "items" : {
+              "type" : "object",
+              "properties" : {
+                "alias" : {
+                  "type" : "string"
+                },
+                "id" : {
+                  "type" : "string"
+                },
+                "reasoning" : {
+                  "type" : "array",
+                  "items" : {
+                    "enum" : [ "none", "minimal", "low", "medium", "high", "xhigh", "max", "default" ]
+                  }
+                },
+                "description" : {
+                  "type" : "string"
+                }
               },
-              "required": ["alias", "id", "reasoning"]
+              "required" : [ "alias", "id", "reasoning" ],
+              "additionalProperties" : false
             }
           }
         }
       }
     },
-    "session": {
-      "type": "object",
-      "properties": {
-        "mode": {"const": "in-process"},
-        "maxTurns": {"type": "integer", "minimum": 1},
-        "maxCostUsd": {"type": "string", "pattern": "^\\d+(\\.\\d{1,4})?$"}
-      }
+    "session" : {
+      "type" : "object",
+      "properties" : {
+        "mode" : {
+          "const" : "in-process"
+        },
+        "maxTurns" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "maxCostUsd" : {
+          "type" : "string",
+          "pattern" : "^\\d+(\\.\\d{1,4})?$"
+        }
+      },
+      "additionalProperties" : false
     },
-    "orchestration": {"type": "object", "properties": {"mode": {"const": "single"}}},
-    "tools": {
-      "type": "object",
-      "properties": {
-        "root": {"type": "string"},
-        "enabled": {"type": "array", "items": {"type": "string"}},
-        "maxCallsPerStep": {"type": "integer", "minimum": 1},
-        "resultBytes": {"type": "integer", "minimum": 1}
-      }
+    "orchestration" : {
+      "type" : "object",
+      "properties" : {
+        "mode" : {
+          "const" : "single"
+        }
+      },
+      "additionalProperties" : false
     },
-    "trace": {
-      "type": "object",
-      "properties": {
-        "directory": {"type": "string"},
-        "capture": {"enum": ["metadata", "payloads"]},
-        "onFailure": {"const": "stop"}
-      }
+    "tools" : {
+      "type" : "object",
+      "properties" : {
+        "root" : {
+          "type" : "string"
+        },
+        "enabled" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "maxCallsPerStep" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "resultBytes" : {
+          "type" : "integer",
+          "minimum" : 1
+        }
+      },
+      "additionalProperties" : false
     },
-    "privacy": {
-      "type": "object",
-      "properties": {
-        "mode": {"const": "strict"},
-        "onUnknown": {"const": "block"},
-        "inputClassification": {"enum": ["unknown", "approved-nonsensitive"]},
-        "sourcePolicyFile": {"type": "string"}
-      }
+    "trace" : {
+      "type" : "object",
+      "properties" : {
+        "directory" : {
+          "type" : "string"
+        },
+        "capture" : {
+          "enum" : [ "metadata", "payloads" ]
+        },
+        "onFailure" : {
+          "const" : "stop"
+        }
+      },
+      "additionalProperties" : false
     },
-    "context": {
-      "type": "object",
-      "properties": {
-        "instructionFiles": {"type": "array", "items": {"type": "string"}},
-        "maxPromptTokens": {"type": "integer", "minimum": 1},
-        "routerStateBytes": {"type": "integer", "minimum": 1}
-      }
+    "privacy" : {
+      "type" : "object",
+      "properties" : {
+        "mode" : {
+          "const" : "strict"
+        },
+        "onUnknown" : {
+          "const" : "block"
+        },
+        "inputClassification" : {
+          "enum" : [ "unknown", "approved-nonsensitive" ]
+        },
+        "sourcePolicyFile" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
     },
-    "agent": {
-      "type": "object",
-      "properties": {
-        "maxGenerationAttempts": {"type": "integer", "minimum": 1},
-        "deadlineSeconds": {"type": "integer", "minimum": 1},
-        "maxCostUsd": {"type": "string", "pattern": "^\\d+(\\.\\d{1,4})?$"},
-        "maxCompletionTokens": {"type": "integer", "minimum": 1},
-        "maxCompactions": {"type": "integer", "minimum": 0}
-      }
+    "context" : {
+      "type" : "object",
+      "properties" : {
+        "instructionFiles" : {
+          "type" : "array",
+          "items" : {
+            "type" : "string"
+          }
+        },
+        "maxPromptTokens" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "routerStateBytes" : {
+          "type" : "integer",
+          "minimum" : 1
+        }
+      },
+      "additionalProperties" : false
     },
-    "catalog": {
-      "type": "object",
-      "properties": {
-        "cacheTtlSeconds": {"type": "integer", "minimum": 1},
-        "allowStale": {"type": "boolean"},
-        "maximumStaleSeconds": {"type": "integer", "minimum": 1}
-      }
+    "agent" : {
+      "type" : "object",
+      "properties" : {
+        "maxGenerationAttempts" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "deadlineSeconds" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "maxCostUsd" : {
+          "type" : "string",
+          "pattern" : "^\\d+(\\.\\d{1,4})?$"
+        },
+        "maxCompletionTokens" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "maxCompactions" : {
+          "type" : "integer",
+          "minimum" : 0
+        }
+      },
+      "additionalProperties" : false
     },
-    "summarisation": {
-      "type": "object",
-      "description": "Optional separate pool for compaction summaries. Absent means summarisation shares the routing pool.",
-      "properties": {
-        "pool": {"type": "string"},
-        "baseline": {"type": "string"},
-        "fallback": {"type": "string"}
-      }
+    "catalog" : {
+      "type" : "object",
+      "properties" : {
+        "cacheTtlSeconds" : {
+          "type" : "integer",
+          "minimum" : 1
+        },
+        "allowStale" : {
+          "type" : "boolean"
+        },
+        "maximumStaleSeconds" : {
+          "type" : "integer",
+          "minimum" : 1
+        }
+      },
+      "additionalProperties" : false
     },
-    "search": {
-      "type": "object",
-      "description": "Relevance rerank for search observations. Absent means off. Shadow scores and reports the proposed order without applying it; enforce reorders. Each search costs one decision call once enabled.",
-      "properties": {
-        "mode": {"type": "string", "enum": ["off", "shadow", "enforce"]},
-        "maxCandidates": {"type": "integer", "minimum": 1, "maximum": 1000}
-      }
+    "summarisation" : {
+      "type" : "object",
+      "description" : "Optional separate pool for compaction summaries. Absent means summarisation shares the routing pool.",
+      "properties" : {
+        "pool" : {
+          "type" : "string"
+        },
+        "baseline" : {
+          "type" : "string"
+        },
+        "fallback" : {
+          "type" : "string"
+        }
+      },
+      "additionalProperties" : false
     },
-    "injection": {
-      "type": "object",
-      "description": "Injection-risk overlay on tool observations. Absent means off. Do not set enforce until the shadow threshold is calibrated: the InjecAgent 0.10 does not transfer to real observations.",
-      "properties": {
-        "mode": {"type": "string", "enum": ["off", "shadow", "enforce"]},
-        "threshold": {"type": "number", "minimum": 0, "maximum": 1}
-      }
+    "search" : {
+      "type" : "object",
+      "description" : "Relevance rerank for search observations. Absent means off. Shadow scores and reports the proposed order without applying it; enforce reorders. Each search costs one decision call once enabled.",
+      "properties" : {
+        "mode" : {
+          "type" : "string",
+          "enum" : [ "off", "shadow", "enforce" ]
+        },
+        "maxCandidates" : {
+          "type" : "integer",
+          "minimum" : 1,
+          "maximum" : 1000
+        }
+      },
+      "additionalProperties" : false
+    },
+    "injection" : {
+      "type" : "object",
+      "description" : "Injection-risk overlay on tool observations. Absent means off. Do not set enforce until the shadow threshold is calibrated: the InjecAgent 0.10 does not transfer to real observations.",
+      "properties" : {
+        "mode" : {
+          "type" : "string",
+          "enum" : [ "off", "shadow", "enforce" ]
+        },
+        "threshold" : {
+          "type" : "number",
+          "minimum" : 0,
+          "maximum" : 1
+        }
+      },
+      "additionalProperties" : false
     }
   },
-  "additionalProperties": true
+  "additionalProperties" : false
 }

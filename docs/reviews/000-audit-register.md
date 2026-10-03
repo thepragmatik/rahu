@@ -3149,3 +3149,104 @@ Adding tests tripped `DocumentedClaimsTest` (a guard I hardened earlier this ses
 README claimed 528, declarations were 530. Corrected the README to 534, per its own advice.
 
 **534 tests green** (184 core / 21 openrouter / 36 systemone / 293 cli), 0 skipped.
+
+
+---
+
+## AUDIT-2026-10-03-ab — the published schema vouched for typos the loader rejects
+
+Follow-up to the A28 close-out, which left `configuration.md` unchecked against
+`ConfigLoader`. That comparison found something sharper than a doc gap.
+
+### The direction that matters
+
+`ConfigLoader` rejects any key it does not honour. The generated
+`docs/generated/config.schema.json` set `"additionalProperties": true` at the root and
+omitted it in every section. I checked the consequence with a real validator
+(`jsonschema` 4.26) against an otherwise-valid config. **All five typos passed:**
+
+| key | schema said | loader says |
+|---|---|---|
+| `decision.timeoutMilis` | valid | unknown config key |
+| `routing.confidencFloor` | valid | unknown config key |
+| `tools.resultByte` | valid | unknown config key |
+| `trace.captureTypo` | valid | unknown config key |
+| `privacy.inputClass` | valid | unknown config key |
+
+The schema is the file an editor consults. So the step whose entire job is catching a
+misspelled key was vouching for it first, and the operator found out at run time instead
+of at the keystroke. That is the worst direction for a drift: the permissive side is the
+one people trust.
+
+### The fix is code, not another hand-edit
+
+My first instinct was to add `"additionalProperties": false` into the JSON literal by
+hand. **That attempt failed repeatedly and I reverted it** (details below). The shipped
+fix leaves the literal byte-identical and closes the schema in
+`SchemaGenerator.closedToTheLoader`, which walks the tree and sets the flag on every
+object that has a fixed key set.
+
+The reason is the point: a future section cannot be added open by accident. The literal
+is the drift site, so the invariant belongs in code that reads it. Objects that are
+genuinely maps keep their schema-valued `additionalProperties` — the root, `pools`, each
+pool entry, and the `models[]` items are descended into rather than closed, since closing
+them would reject every value. 14 sections closed; `pools` is the only map.
+
+Re-verified with the independent validator after the fix: all five typos now report
+*"Additional properties are not allowed"*, a top-level `decison` and a pool-model
+`reassing` are both caught, and a valid config still validates clean.
+
+### `configuration.md` was missing two whole sections
+
+The loader honours `search` (`mode`, `maxCandidates`) and `injection` (`mode`,
+`threshold`). The spec's field table ended at `privacy` — neither section appears, and
+`search`, `injection`, `maxCandidates` and `threshold` had **zero** mentions in the whole
+document. An operator reading the spec could not learn that the injection threshold or
+the rerank cap exist. Both are now documented, with the default of 20 candidates taken
+from `ConfigLoader` (`maxCandidatesOrDefault`) rather than invented.
+
+`SchemaAgreesWithLoaderTest` derives both sides from the code — top-level keys from
+`ConfigLoader.acceptedTopLevelKeys()`, sections from the committed schema — so it cannot
+drift into asserting its own hand-written list.
+
+| mutation | failing test |
+|---|---|
+| root reopened to `true` | `schemaRefusesUnknownKeysInEverySection` |
+| sections reopened | `schemaRefusesUnknownKeysInEverySection` |
+| a section renamed in the schema only | **both** `schemaDocumentsEveryAcceptedKey` and `schemaDocumentsNoKeyTheLoaderRejects` |
+
+The third row is the bidirectional check earning its keep: renaming `privacy` fails the
+missing-key test *and* the unexpected-key test, because the schema would both hide a real
+key and advertise one the loader refuses.
+
+### Five failures worth recording, because three were my own fault
+
+- **I mangled the generator with line-based text surgery.** Inserting lines by index
+  corrupted the file so badly that line 8 became `"/"properties": {` and the method
+  header vanished — the compiler error pointed at line 8 of a file whose line 1 was
+  `package rahu.cli;`. I reverted with `git checkout` rather than patching onward.
+- **A quadratic list-reslicing loop hung for 300s** and was killed, losing the kernel.
+  Checking `git status` first showed it had died before writing, so nothing was corrupted.
+  Worth the ten seconds: a hung transform that may have half-written is exactly when you
+  verify rather than assume.
+- **Regenerating the literal from parsed JSON silently corrupted a regex.** The Java
+  text block held `\\d` to emit `\d`; my Python round-trip dropped a level, producing
+  invalid JSON (`Invalid \escape`). I had been about to ship a schema whose money pattern
+  was broken. Caught by parsing the generated artifact, not by the Java compiler.
+- **My own probe lied about escaping depth** (the `bash -lc` JAVA_HOME trap from A28) —
+  same failure mode again: a measurement that did not match the thing being measured.
+- **Two genuine fixture faults**: `ConfigLoader.ConfigError` is a top-level class, not
+  nested; and `RahuConfig.mode()` does not exist (it is a record component). Both were
+  API guesses, caught by the compiler before they could mislead the test's intent.
+
+Three parse gates did real work here: every transform validated the JSON before writing,
+and the `SchemaAgreesWithLoaderTest` fixture was caught as invalid by the loader's own
+required-field check (`routing.fallback` is required and the schema does not mark it).
+
+### README count
+
+Adding 5 tests tripped `DocumentedClaimsTest` again — README said 534, the repository
+declared 535 methods and surefire ran 539. Corrected the README. That guard has now caught
+me twice, which is the argument for having written it.
+
+**539 tests green** (184 core / 21 openrouter / 36 systemone / 298 cli), 0 skipped.

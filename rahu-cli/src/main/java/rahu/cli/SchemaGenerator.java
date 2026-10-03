@@ -16,7 +16,89 @@ public final class SchemaGenerator {
     }
 
     public static String configSchemaJson() {
-        return """
+        return closedToTheLoader(TOP_LEVEL_SCHEMA);
+    }
+
+    /**
+     * Refuses any key the loader does not honour, at the root and in every section.
+     *
+     * <p>The literal above sets {@code "additionalProperties": true} at the root and
+     * omits it in the sections, while {@link rahu.cli.config.ConfigLoader} rejects every
+     * key it does not know. I confirmed the consequence before changing it: with an
+     * otherwise-valid config, {@code decision.timeoutMilis},
+     * {@code routing.confidencFloor}, {@code tools.resultByte},
+     * {@code trace.captureTypo} and {@code privacy.inputClass} were all ACCEPTED by
+     * the committed schema. The schema is what an editor consults, so the step meant to
+     * catch the typo vouched for it first.
+     *
+     * <p>Doing this in code rather than by hand in the literal means a future section
+     * cannot be added open by accident, which is how this drift arrived. Sections that
+     * are genuinely maps keep their schema-valued {@code additionalProperties}: the
+     * root, {@code pools}, the pool entries, and the {@code models} array items. Those
+     * are the objects with no fixed key set, so closing them would reject every value.
+     */
+    private static String closedToTheLoader(String schemaJson) {
+        try {
+            com.fasterxml.jackson.databind.ObjectMapper mapper =
+                new com.fasterxml.jackson.databind.ObjectMapper();
+            com.fasterxml.jackson.databind.node.ObjectNode root =
+                (com.fasterxml.jackson.databind.node.ObjectNode) mapper.readTree(schemaJson);
+            root.put("additionalProperties", false);
+            closeFixedKeyObjects(root.get("properties"));
+            return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(root) + "\n";
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            throw new IllegalStateException("config schema literal is not valid JSON", e);
+        }
+    }
+
+    /** Sets {@code additionalProperties:false} on each child that has a fixed key set. */
+    private static void closeFixedKeyObjects(
+        com.fasterxml.jackson.databind.JsonNode properties) {
+        for (var field : properties.properties()) {
+            var node = field.getValue();
+            if ("array".equals(node.path("type").asText())) {
+                // An array's element schema is itself a fixed-key object (models[]).
+                closeArrayItems(node);
+                continue;
+            }
+            if (!"object".equals(node.path("type").asText())) {
+                continue;
+            }
+            if (node.has("additionalProperties")) {
+                // A map: its additionalProperties IS its schema, and it describes what
+                // each VALUE must look like. Descend through it, because the value schema
+                // can itself be a fixed-key object (a pool entry) or an array of one
+                // (a pool's models).
+                var value = node.get("additionalProperties");
+                if ("object".equals(value.path("type").asText())) {
+                    if (value.has("properties")) {
+                        closeFixedKeyObjects(value.get("properties"));
+                    }
+                    closeArrayItems(value);
+                }
+                continue;
+            }
+            ((com.fasterxml.jackson.databind.node.ObjectNode) node)
+                .put("additionalProperties", false);
+            var nested = node.get("properties");
+            if (nested != null) {
+                closeFixedKeyObjects(nested);
+            }
+            closeArrayItems(node);
+        }
+    }
+
+    /** Closes the object schema inside {@code array}, if it has one. */
+    private static void closeArrayItems(com.fasterxml.jackson.databind.JsonNode array) {
+        var items = array.get("items");
+        if (items != null && "object".equals(items.path("type").asText())
+            && !items.has("additionalProperties")) {
+            ((com.fasterxml.jackson.databind.node.ObjectNode) items)
+                .put("additionalProperties", false);
+        }
+    }
+
+    private static final String TOP_LEVEL_SCHEMA = """
             {
               "$schema": "https://json-schema.org/draft/2020-12/schema",
               "title": "Rahu configuration v1",
@@ -171,7 +253,6 @@ public final class SchemaGenerator {
               "additionalProperties": true
             }
             """;
-    }
 
     /** Writes docs/generated/ artifacts from the repo root. */
     public static void main(String[] args) throws IOException {

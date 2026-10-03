@@ -27,6 +27,9 @@ Precedence: built-in operational defaults < explicit configuration file < docume
 | `session` | mode `in-process`, maxTurns, maxCostUsd; no automatic persistence |
 | `orchestration` | mode `single` only in alpha |
 | `privacy` | mode `strict`, onUnknown `block`, inputClassification `unknown`/`approved-nonsensitive`, optional local sourcePolicyFile |
+| `search` | mode `off`/`shadow`/`enforce`, maxCandidates 1-1000; absent means off. Shadow scores and reports the proposed order without applying it. Each search costs one decision call once enabled |
+| `injection` | mode `off`/`shadow`/`enforce`, threshold 0-1; absent means off. Do not set `enforce` until the shadow threshold is calibrated against real observations |
+
 
 Candidate references are `alias@policy`. A reference must exist in its named pool. The same alias cannot identify different models within a pool. Efforts cannot be an empty list. Local-service model is independent from generation model aliases. Provider constraints apply to every attempt. Allowlist fields never accept wildcard expansion by model text.
 
@@ -50,6 +53,8 @@ Limits are finite: timeouts/deadlines and byte/token/attempt counts must be posi
 | Session | in-process; 20 turns; USD 3.00 aggregate admission; no persistence |
 | Orchestration | single; exact no-progress streak 3; no delegation |
 | Privacy | strict; unknown blocks; input classification unknown; no implicit source approval |
+| Search rerank | off; cap 20 candidates once enabled |
+| Injection overlay | off; threshold unset |
 
 ## Validation and disclosure
 
