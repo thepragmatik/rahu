@@ -1,11 +1,32 @@
 # Dogfood alpha release gate evidence
 
-Date: 2026-10-02. Through `5d81b85`: the N1 fixes (`4067ea0`, `ada86eb`, `4002166`,
-`990647f`), the N1 audit and release manifest (`626d44a`, `0452d97`), and the N2
-failure-typing fixes (`cdef376`, `5d81b85`). Branch `main`, **local only — not pushed.**
-This document is
-the requirement-to-test evidence manifest that `release-gates.md:39` requires and that
-did not previously exist.
+> **CURRENT STATUS (2026-10-03, supersedes everything below).**
+> This file grew by appending, so later sections contradict earlier ones. This block is
+> authoritative; where it disagrees with the text below, this block wins.
+>
+> | Item | Value |
+> |---|---|
+> | Suite | **571 green**, 0 skipped (184 core / 21 openrouter / 36 systemone / 335 cli) |
+> | Branch | `main`, **pushed** — remote `main` == local `main` |
+> | Requirement-to-test manifest | **now generated and machine-checked** (`EvidenceManifestTest`, `docs/generated/evidence-manifest.json`) |
+> | Offline complete | **still NOT declared.** The blocker is no longer missing evidence — it is that G09 live evidence is partly self-contradictory, below. |
+> | Live dogfood verified | **NO.** See "Known contradictions". |
+> | Routing optimisation validated | **NO.** M3 has not happened; `routing.mode` ships as `shadow`. |
+>
+> **Known contradiction, unresolved.** The "Headline status" section below says G09 "is
+> blocked on operator authority" and that the decision plane is hosted and in use. The
+> later section `## G09 live smoke — RUNS 2026-10-03, PASSED` records four live runs, one
+> of which found a real defect (a repeated failing `workspace.read`) and three of which
+> failed to produce an answer. Both cannot be the current position, and I have not
+> resolved which is true, because doing so needs a live run this session did not
+> perform. What is *not* in doubt, and is stated plainly in that section: **the
+> NO_PROGRESS guard has never fired in a live run** — run 4 was the first post-fix turn
+> and never entered the repeat shape. That is an honest gap, not a pass, and it is the
+> single thing most likely to be misread as a green light.
+>
+> **Stale figures in the body:** "299 green", "`5d81b85`", "local only — not pushed", and
+> "A25–A32 are covered by slice reviews only" are all superseded. A25–A34 now carry
+> method-level test evidence; see the generated manifest for the authoritative map.
 
 ## Headline status
 

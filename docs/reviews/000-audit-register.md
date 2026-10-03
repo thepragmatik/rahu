@@ -3612,3 +3612,107 @@ Every mutated file restored byte-identical afterwards (verified).
 
 All three clauses now have tests, and each test has been shown to fail on the regression it
 names. Remaining uncovered acceptance IDs: **A17, A20, A30**.
+
+
+---
+
+## AUDIT-2026-10-03-ag — A30/G10: 34 requirements, a large suite, and no link between them
+
+G10 requires a "requirement-to-test evidence manifest" and warns that "code presence alone
+is not evidence". The manifest did not exist. Worse, my first scan found **only 12 of 34**
+acceptance IDs mentioned anywhere in `rahu-cli` tests — which looked like catastrophic
+undercoverage and was actually my own bad measurement: I scanned one module and matched bare
+strings. Redone across all modules it was 31 of 34.
+
+So the real defect was not missing coverage. It was that **nothing connected the two.** An
+acceptance row could be quietly unimplemented while `mvn verify` stayed green, and a review
+could cite a test that no longer exists. Both are documentation defects, and documentation
+defects do not fail builds on their own.
+
+### The manifest is generated, not written
+
+`rahu.cli.docs.EvidenceManifest` derives every row from the test sources. A hand-maintained
+evidence table is a second thing to keep in sync that nothing checks — G10's warning applied
+to the evidence table itself. Not committed, matching `BuildManifestGenerator`'s reasoning:
+`docs/generated/` is gitignored, and a file that changes on every test edit guarantees a dirty
+tree and a red sync assertion on commits that are not itself the update.
+
+### Method-level, and class-level recorded as the weaker claim
+
+A class-level rule would let one method mentioning "A16" in passing satisfy the whole class.
+So evidence is attributed per method — from the ID appearing in that method's own javadoc or
+`@DisplayName`, sliced at the previous closing brace so one method's citation cannot bleed
+into the next.
+
+But three IDs (A02, A27, A31) are named only in a class javadoc. Rather than call those
+uncovered, the manifest records status `evidencedByClassDoc` with a caveat. Reporting 28
+strong + 3 weak + 3 exempted is the truth; collapsing it to "31 covered" would have been the
+G10 mistake one level down.
+
+### A gate cannot discharge itself
+
+The first run came back with A30 `evidenced`, citing `EvidenceManifestTest#<class>` — this
+very class. Circular: the requirement was satisfied by the existence of the machinery, not by
+the machinery's self-description. The generator now skips its own sources. Removing that
+exclusion (mutation N6) fails the build, so it stays.
+
+### The three exemptions are recorded, not hidden
+
+A17 needs paired live eval runs with real router overhead — no offline test can produce a
+genuine baseline/candidate pair. A20 is a process clause about recorded findings. A30 is
+this gate. Each carries its reason into the manifest, and the summary asserts
+`gaps == 0` so a fourth silent hole fails the build. Recording the gaps is the opposite of
+hiding them: the release can say "offline complete with these three named gaps" instead of
+implying full coverage.
+
+### The phantom test was validating the wrong thing
+
+Mutation V1: the generator emits a fabricated citation `…#aMethodThatDoesNotExist`. The test
+passed — because it inspected `evidence()` while the manifest is emitted by `generate()`.
+Different code paths. A phantom check that validates a recomputation instead of the artifact
+is not checking the artifact, and the artifact is what a reviewer reads. Now reads
+`generate()`'s actual output; V1 caught.
+
+### N4 is not a hole, and I was wrong twice about it
+
+Renaming `OperationalDefaultsTest` leaves the suite green. First I assumed my citation-by-
+file-name had a blind spot and "fixed" it to cite the declared class. Then I read a **stale**
+`docs/generated/` file, wrongly concluded the citation did not move, and wrote that reasoning
+into a comment. Re-checked with a clean compile: the citations **do** move
+(`RenamedDefaultsTest#…`), so the manifest stays true to the code. A generated manifest
+cannot cite a phantom; what the phantom test guards is a generator bug fabricating one (V1).
+Corrected comment, and the stale-file lesson is why I distrust the first reading.
+
+### Eight mutations, all caught
+
+| mutation | caught by |
+|---|---|
+| N1 A27 loses all citations | everyRequirementHasEvidenceOrAnExemption + 2 |
+| N2 a spec requirement row deleted | same |
+| N3 generator emits a timestamp | generationIsDeterministic |
+| N5 an exemption silently dropped | everyRequirementHasEvidenceOrAnExemption |
+| N6 self-exclusion removed | theManifestIsHonestAboutGaps + methodLevel |
+| N7 an exemption deleted outright | everyRequirementHasEvidenceOrAnExemption |
+| V1 generator fabricates a citation | everyCitedMethodExists |
+| N4 cited class renamed | correctly **not** an error — citations move with the class |
+
+All mutated files restored byte-identical; tracked tree clean.
+
+### Release-wide critique (A30, second deliverable)
+
+`docs/reviews/dogfood-release.md` grew by appending and now **contradicts itself**: the
+headline says G09 "is blocked on operator authority" with the hosted decision plane in use,
+while a later section records four live G09 runs, one of which found a real defect. I could
+not resolve which is current — that needs a live run this session did not perform — so I said
+so instead of picking one. Added an authoritative status preamble and flagged the
+contradiction.
+
+The sharpest surviving risk, stated in that file and repeated here: **the NO_PROGRESS guard
+has never fired in a live run.** Run 4 was the first post-fix turn and never entered the
+repeat shape. Offline tests (7/7 and 2/2) are not a live pass, and the document says so.
+
+### A30 status
+
+Manifest and critique delivered; offline-complete remains **not** declared, now blocked on
+resolving G09 rather than on missing evidence. Remaining uncovered acceptance IDs: **A17**
+(live eval pair), **A20** (process clause) — both reasoned exemptions, not silent gaps.
