@@ -1,8 +1,14 @@
 package rahu.cli.trace;
 
+import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Optional;
 
 import rahu.core.context.SessionState;
+import rahu.core.decision.DecisionResult;
+import rahu.core.routing.CandidateSet;
+import rahu.core.routing.RouteResolver.ResolutionInput;
+import rahu.core.routing.RoutingMode;
 import rahu.core.privacy.SafeView;
 
 /**
@@ -27,8 +33,18 @@ public final class TurnTrace {
     private final String configHash;
     private final String catalogHash;
     private final String sessionId;
+    private final boolean payloadsEnabled;
 
     public TurnTrace(Path root, Object cfg, Object catalog, String sessionId) {
+        this(root, cfg, catalog, sessionId, "metadata");
+    }
+
+    /**
+     * @param capture the configured {@code trace.capture}; "payloads" is the only
+     *     value that enables routing-input capture, anything else is metadata-only
+     */
+    public TurnTrace(Path root, Object cfg, Object catalog, String sessionId, String capture) {
+        this.payloadsEnabled = "payloads".equals(capture);
         this.root = root;
         this.configHash = SafeView.sha256Of(String.valueOf(cfg));
         // The catalog decides which candidates are admissible, so two traces
@@ -58,6 +74,40 @@ public final class TurnTrace {
      *
      * @return true when the refusal was recorded
      */
+    /**
+     * Writes the frozen routing inputs for this run, when capture is enabled.
+     *
+     * <p>AUDIT-2026-10-03-e: {@code trace.capture} was parsed into config and read
+     * by nothing, so "payloads" and "metadata" were indistinguishable and replay had
+     * no input to read. This is the read.
+     *
+     * <p>Returns the file written, or empty when capture is off (the default). An
+     * empty return is not a failure: metadata capture deliberately writes no
+     * replay input, and a replay of such a run correctly reports UNAVAILABLE.
+     */
+    public Optional<Path> captureReplayInputs(Path runDirectory,
+        CandidateSet candidates, RoutingMode mode, ResolutionInput input,
+        Optional<DecisionResult> decision) throws IOException {
+
+        if (!payloadsEnabled) {
+            return Optional.empty();
+        }
+        return Optional.of(ReplayCapture.write(runDirectory, candidates, mode, input, decision));
+    }
+
+    /**
+     * Whether payload capture is on.
+     *
+     * <p>Only the exact value "payloads" enables it. An unrecognised value is not
+     * treated as off: a typo must not silently downgrade a run to metadata-only,
+     * because the operator then believes a replayable trace exists. Unknown values
+     * are refused at config load; this is the second line for a config built in
+     * code rather than parsed from JSON.
+     */
+    public boolean payloadsEnabled() {
+        return payloadsEnabled;
+    }
+
     public boolean recordRefusal(int turnIndex, String blockedCategory) {
         try (var tracer = new RunTracer(root, "refused-" + java.util.UUID.randomUUID(), sessionId)) {
             tracer.runStarted(turnIndex, configHash, catalogHash);
@@ -84,6 +134,7 @@ public final class TurnTrace {
     /** Convenience factory for a session. */
     public static TurnTrace forSession(Path root, rahu.cli.config.RahuConfig cfg,
         SessionState session) {
-        return new TurnTrace(root, cfg, cfg.catalog(), session.sessionId());
+        return new TurnTrace(root, cfg, cfg.catalog(), session.sessionId(),
+            cfg.trace() == null ? "metadata" : cfg.trace().capture());
     }
 }

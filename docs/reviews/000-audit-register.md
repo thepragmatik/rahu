@@ -619,3 +619,158 @@ replay half of G06 is not wired, not merely mis-wired, and observability.md's
 That is a larger piece of work than an exit-code fix and is the next increment.
 Recorded here because I found it while scoping, and it would have been easy to
 mention `capture` in a commit message and leave the actual gap unstated.
+
+
+---
+
+## AUDIT-2026-10-03-e — replay was dead code, and the engine would have lied
+
+Scoped from the AUDIT-2026-10-03-d note. The finding was larger than the note
+said.
+
+### The gap
+
+`cli.md` documents nine commands. The packaged CLI had five. Missing entirely:
+
+| Command | cli.md | Status |
+|---|---|---|
+| `rahu replay RUN_PATH` | :14 | **did not exist** |
+| `rahu trace inspect RUN_PATH` | :13 | **did not exist** |
+| `rahu run --config FILE` | :11 | **did not exist** |
+
+`ReplayEngine` and `ReplayOutcome` existed and were unit-tested. Nothing in
+`src/main` referenced either. `trace.capture` and `trace.onFailure` were parsed
+into config and read by nothing, so `payloads` and `metadata` were
+indistinguishable. `docs/plans/active/001-dogfood.md:121` carries a **checked**
+box claiming "complete run/chat/inspect/replay/eval help and exact commands",
+verified by "demo/validate/eval 6/6 exit 0" — the three commands that were
+tested, and none of the four claimed. G06 was marked PASSED on that basis.
+
+So `replay` is now implemented and wired. `run` and `trace inspect` are not, and
+G06 cannot honestly be marked PASSED until they are.
+
+### The defect behind the dead code
+
+`ReplayEngine` did not take the resolver's confidence parameters. It hardcoded:
+
+```java
+new RouteResolver.ResolutionInput(candidates, baselineId, fallbackId,
+    "chosen_probability", 0.65);
+```
+
+Those are the config **defaults**, not the captured values. Every replay of a run
+configured with any other `confidenceField` or `confidenceFloor` would have
+resolved against inputs that turn never used, and then reported agreement or
+disagreement about a routing question that had not been asked.
+
+This is worse than dead code, and it is the reason dead code can be dangerous:
+wiring it up unchanged would have produced confident wrong answers. It is now the
+entry point's own regression — a test asserts the defaults-based overload stays
+`@Deprecated`, and the frozen-input overload routes past it.
+
+### What replay is, and what it is not
+
+Per observability.md:34-38, policy replay: frozen routing inputs pushed through
+the same `RouteResolver` the live turn used. Not live rerun (billable), not
+crash recovery (replay cannot do it).
+
+`ReplayCapture` stores the candidate ids, the exclusion list, baseline/fallback,
+the confidence field and floor, and the recorded decision — exactly what the
+resolver consumes. It stores **no resolution**: persisting the outcome beside the
+inputs would let a future caller "compare" against a stored answer, which is a
+comparison that cannot fail. A test asserts the capture contains no
+`suggested`/`executed`/`degraded`.
+
+It also stores no prompt text, no answer, no tool content. That is why
+privacy.md:27's re-scan obligation does not arise: there is no generated content
+in the file to re-scan, because the capture is built from the candidate set
+rather than the transcript. Two tests assert this, one against the literal
+prompt the driver was actually given.
+
+### Guarantees, and how each is enforced
+
+- **No network, no tools (A11).** Proven structurally by scanning the four
+  production classes for `HttpClient`, `http.`, `OkHttp`, `URL(`, `Socket`,
+  `openStream`, `OpenRouterProvider`, `DecisionEngine`, `Tools.`, and asserting
+  none appear. A behavioural test cannot prove the *absence* of a call.
+- **UNAVAILABLE is real.** Metadata capture is the default, so replay of an
+  ordinary run reports unavailable and exits 3. It never fabricates a
+  resolution — a fabricated replay looks like evidence.
+- **Integrity first.** A trace with no `RunStarted`, or no `RunTerminated`, is
+  refused with exit 5 rather than replayed. A run that stopped mid-turn has no
+  final routing outcome, and re-deriving one would report agreement about a turn
+  that did not complete.
+- **Refuse, never substitute.** A capture missing `confidenceFloor`, carrying an
+  unknown `schemaVersion`, or naming a candidate whose reasoning-policy suffix is
+  not in `CandidateFactory`'s vocabulary, is rejected. Substituting the default
+  would replay against inputs that were never recorded.
+
+The policy suffix check matters more than it looks: decoding with a private
+vocabulary would let an id the live run could not produce replay happily, so the
+replay would report agreement about a candidate that never existed.
+
+### Proof it has power
+
+Reintroducing each original defect, running only the replay suites:
+
+| Mutation | Result |
+|---|---|
+| baseline | 21 tests, 0 failures |
+| `capture=payloads` still inert (the original bug) | 1 failure, 4 errors |
+| driver never calls capture (the original bug) | 1 failure, 4 errors |
+| replay re-applies hardcoded defaults (the original bug) | 2 failures |
+| exclusions dropped from the capture | 2 failures |
+| capture stores a resolution | 1 failure |
+| missing floor silently defaulted | 1 failure |
+| unknown policy suffix → provider default | 1 failure |
+| schema version unchecked | 1 failure |
+
+Packaged binary, four paths: metadata run → UNAVAILABLE exit 3; same in JSON →
+`{"status":"UNAVAILABLE",...}`; trace with no terminal record → exit 5; missing
+path → exit 3. REPLAYED output agrees with the recorded route at floor 0.65 and
+correctly reports `agrees=false` at floor 0.95.
+
+### A test that failed truthfully, twice
+
+Worth recording because both failures were the test being right.
+
+`ReplayEndToEndTest` initially failed: with a silent decision engine the live
+turn makes no decision, so the capture legitimately holds none and every replay
+is UNAVAILABLE. The temptation was to weaken the assertions to match. Instead a
+`RoutingEngine` fixture now answers the routing question for real, and
+UNAVAILABLE-when-absent is asserted separately where it is the property under
+test.
+
+Second: the policy-change test raised the captured floor to 0.99 and saw no
+change. The fixture's uniform 0.5 probabilities are already rejected by the
+configured 0.65 floor, so both replays rejected identically — the test would have
+passed for the wrong reason on the original edit, had the floor been the only
+thing checked. Lowering to 0.1 makes the same decision accepted, so the outcome
+must differ. Same lesson as AUDIT-2026-10-03-d, from the other direction: a test
+that cannot fail is worse than no test, because it is trusted.
+
+### Fourth inert configuration key: `confidenceField`
+
+Found while verifying the fix. `confidenceField` is parsed
+(`ConfigLoader:226`), passed into `ResolutionInput`, written into the capture,
+read back — and **never consulted by `RouteResolver`**. The resolver derives the
+chosen probability from `probabilities().get(chosenLabel())`, so the field name
+has no effect on any decision. Every fixture in the repo sets it to
+`chosen_probability`, so no test could have detected this.
+
+Recorded, not fixed. Making it select a probability field changes routing
+semantics and is a design decision, not a wiring fix — the honest options are to
+implement it or to remove it from the spec and schema. Left visible rather than
+silently deleted from the record.
+
+### Still open
+
+- `rahu run` and `rahu trace inspect` do not exist. cli.md:11-13 document them.
+- `trace.onFailure` remains parsed-but-unread; A16 hard-codes "stop", which is
+  the safe default but leaves the key inert.
+- `DemoCommand` still hand-builds its trace instead of using `RunTracer`.
+- A live capture cannot be produced through the packaged CLI: `mode: live`
+  requires the OpenRouter adapter, so the end-to-end capture proof above runs
+  in-process against the real driver with fakes, and the packaged proof uses a
+  hand-authored capture. The two together cover the command path and the wiring;
+  neither alone would.

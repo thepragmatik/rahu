@@ -118,7 +118,8 @@ Acceptance: A17, A22–A27, A29, A31, A32. Evidence: offline report with correct
 
 ### S11 Packaging and usable handoff
 
-- [x] Verify stable launcher/jar from a clean checkout; complete run/chat/inspect/replay/eval help and exact commands. (Clean-clone G01 ritual: mvnw verify BUILD SUCCESS 128 tests; demo/validate/eval 6/6 exit 0; README quickstart with exact commands.)
+- [ ] Verify stable launcher/jar from a clean checkout; complete run/chat/inspect/replay/eval help and exact commands. (Clean-clone G01 ritual: mvnw verify BUILD SUCCESS 128 tests; demo/validate/eval 6/6 exit 0; README quickstart with exact commands.)
+  - **CORRECTED 2026-10-03, AUDIT-2026-10-03-e: this box was checked on evidence that could not support it.** It was verified by running demo/validate/eval — three of the five commands named. `rahu run`, `rahu trace inspect` and `rahu replay` did not exist in the packaged CLI; cli.md documents all three. Unchecked rather than deleted so the gap stays visible. `replay` is now implemented and mutation-verified; `run` and `trace inspect` remain unimplemented, so this stays open.
 - [x] Generate validated config schema and build manifest; check examples, wire fixtures, suites and docs destinations. (docs/generated/config.schema.json generated + tested; build manifest deferred to S12 release report; shipped suites parse in tests.)
 - [ ] Document a working compiled extension against actual ports and test cleanup/authority/dependency direction. **STILL OPEN — now the single named G07 gap.** Registry wiring is real (`ChatCommand.workspaceRegistry`, `ToolLoop`, `ChatCommandTest`); the missing piece is one third-party compiled example registering a tool through the public surface. Offline, no credentials.
 - [ ] Review real output in colourless/narrow/non-TTY/JSON modes; fix misleading routes/costs/failures.

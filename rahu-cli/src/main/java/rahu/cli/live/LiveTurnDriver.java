@@ -133,7 +133,21 @@ public final class LiveTurnDriver {
             + (d.wouldHaveWithheld() ? (d.withholds() ? " withheld" : " would-withhold") : "");
     }
 
-    private record Routing(rahu.core.routing.RouteResolution resolution, String note) {
+    /**
+     * A resolved turn plus the decision the resolver consumed.
+     *
+     * <p>AUDIT-2026-10-03-e: the decision is carried here rather than re-derived
+     * later, because the capture must record the decision THIS resolution was
+     * computed from. Reconstructing it from the note or re-asking the engine would
+     * capture a different input and produce a replay that disagrees with a run that
+     * never varied.
+     */
+    private record Routing(rahu.core.routing.RouteResolution resolution, String note,
+        Optional<DecisionResult> decision) {
+
+        private Routing(rahu.core.routing.RouteResolution resolution, String note) {
+            this(resolution, note, Optional.empty());
+        }
     }
 
     /**
@@ -232,6 +246,26 @@ public final class LiveTurnDriver {
                     routing.resolution().degraded(),
                     routing.resolution().fallbackCause().orElse(null),
                     routing.resolution().exclusions().size());
+                // Frozen routing inputs for `rahu replay` (AUDIT-2026-10-03-e).
+                // Written only when trace.capture=payloads; metadata capture writes
+                // nothing and a replay of such a run reports UNAVAILABLE, which is
+                // the honest outcome rather than a reconstruction.
+                //
+                // A capture failure is NOT swallowed: the operator asked for
+                // replayable evidence and would otherwise get a run that reports
+                // success while producing none. Stated as a warning on stderr and
+                // reflected in the terminal record, because the answer itself is
+                // unaffected - only the evidence is.
+                try {
+                    trace().captureReplayInputs(
+                        java.nio.file.Path.of(cfg.trace().directory())
+                            .resolve(turn.runId()),
+                        router.candidates(), router.mode(), routingInput(), routing.decision())
+                        .ifPresent(captured -> err.println("replay inputs: " + captured));
+                } catch (java.io.IOException e) {
+                    err.println("replay capture failed; this run is not replayable: "
+                        + e.getMessage());
+                }
                 if (routing.resolution().terminalReason().isPresent()) {
                     err.println("routing terminal: " + routing.resolution().terminalReason().get()
                         + " — nothing was sent");
@@ -439,7 +473,8 @@ public final class LiveTurnDriver {
             if (result instanceof DecisionResult.ValidChoice choice) {
                 return new Routing(router.resolve(Optional.of(result)),
                     choice.chosenLabel() + " (confidence "
-                        + choice.rawConfidence().map(Object::toString).orElse("unknown") + ")");
+                        + choice.rawConfidence().map(Object::toString).orElse("unknown") + ")",
+                    Optional.of(result));
             }
             if (result instanceof DecisionResult.Failure failure) {
                 return new Routing(router.resolve(Optional.empty()),
@@ -450,6 +485,26 @@ public final class LiveTurnDriver {
             return new Routing(router.resolve(Optional.empty()),
                 "failed (" + e.getClass().getSimpleName() + ")");
         }
+    }
+
+    /**
+     * The resolver input for this configuration.
+     *
+     * <p>Duplicated from {@link ActiveRouter#resolve} on purpose ONLY as a single
+     * extraction point: the capture must record exactly the input the live
+     * resolution used, and the honest way to guarantee that is for both callers to
+     * read it from one place. If ActiveRouter's defaults ever change, this must
+     * change with them - ReplayCaptureTest asserts the two agree.
+     */
+    private rahu.core.routing.RouteResolver.ResolutionInput routingInput() {
+        var routing = cfg.routing();
+        double floor = routing.confidenceFloor() == null
+            ? 0.0 : routing.confidenceFloor();
+        return new rahu.core.routing.RouteResolver.ResolutionInput(router.candidates(),
+            Optional.ofNullable(routing.baseline()),
+            Optional.ofNullable(routing.fallback()),
+            routing.confidenceField() == null ? "" : routing.confidenceField(),
+            floor);
     }
 
     /** The candidate the resolver selected for execution. */
