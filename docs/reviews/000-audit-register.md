@@ -242,3 +242,81 @@ proof, and the proof must be a **turn that writes a file**, not a unit test.
 The inert-key detector found this as a side effect, not as a target. That is the
 argument for building the detector rather than fixing the known list: the known list
 had twelve entries and did not include this.
+
+
+---
+
+## AUDIT-2026-10-03-a — PARTIAL FIX (live path wired; offline path still dead)
+
+Commit in flight. Status: **PARTIALLY REMEDIATED** — do not record G06 as PASSED.
+
+### What is now fixed
+
+`LiveTurnDriver` owns a `RunTracer` per turn. Five real events, verified by
+reading an actual trace file produced by a real driver run:
+
+```
+1 RunStarted      {"sessionId":"sample","turnIndex":0,
+                   "configHash":"6fbed0d5...","catalogHash":"ba4b3163..."}
+2 RouteResolved   {"suggested":null,"executed":"fast@low","mode":"SHADOW",
+                   "degraded":true,"fallbackCause":"decision-missing",
+                   "excludedCandidates":2}
+3 ModelRequested  {"requestedModel":"demo-fast","maxCompletionTokens":4096}
+4 ModelCompleted  {"requestedModel":"demo-fast","finishReason":"stop",
+                   "usage":{"promptTokens":11,"completionTokens":5,"costMicros":500}}
+5 RunTerminated   {"reason":"ANSWER_COMPLETE","generationSteps":1,"elapsedMs":32}
+```
+
+Compare the four pre-existing traces, every one of which carries
+`"configHash":"synthetic"` and `"catalogHash":"synthetic"`. The token counts
+(11/5) are the provider's real reported usage, not a placeholder.
+
+`trace.directory` is now honoured: the trace lands in the configured directory,
+one subdirectory per run id. I proved this by mutating the wiring to hard-code
+`.rahu/runs`; four of the five tests went red, so the test has real power rather
+than merely passing.
+
+Privacy checked, not assumed: the produced trace contains no prompt text, no
+tool arguments and no reasoning. `grep` for the actual user prompt against the
+real trace returns 0 matches. Payloads carry hashes and counters only.
+
+Refusals are traced too. A privacy-blocked input returns before a run handle
+exists, so it is recorded under a `refused-<uuid>` id with `RunRefused` then
+`RunTerminated`, and the category only — never the offending data (privacy.md).
+A refusal with no record cannot be told apart from a turn that never ran.
+
+A16: `TraceFailureException` propagates. A broken sink stops the turn (exit 5)
+rather than producing a partial trace readable as complete.
+
+### What is NOT fixed — and must not be claimed as fixed
+
+**`ChatCommand.runOffline` writes no trace.** Verified by running the built
+binary against `examples/offline.json` with `trace.directory` pointed at a temp
+dir: 0 files written.
+
+`runOffline` is a separate loop that never constructs a `LiveTurnDriver`. It has
+its own `session.beginTurn()` / `turn.complete()` and it calls no tracer. So
+half the chat entry points still produce no observability at all.
+
+`DemoCommand` also still hand-builds a hardcoded four-event trace instead of
+using `RunTracer`, though it now does write something.
+
+### Gate status
+
+G06 remains **BUILT, NOT WIRED — PARTIALLY**. It is honest to say the live path
+is wired and proven. It is not honest to say the gate passes, because the
+operator's default offline configuration still produces no trace, and an
+operator dogfooding offline would see an empty observability story.
+
+Also outstanding for a true G06: `trace.capture` and `trace.onFailure` are still
+parsed-but-unread. The wiring honours `onFailure=stop` by construction (the
+exception propagates), but that is code behaviour, not config reading. A
+`capture=full` request is still silently ignored. That is the same inert-key
+shape the audit exists to catch, and it should be the next increment.
+
+### Evidence
+
+`RunTraceWiringTest` — 5 tests, each driving a real turn through the real driver
+and asserting on the file that appeared. Not one of them constructs a
+`TraceWriter` directly, because that is the shape of test that passed against
+the broken state.
