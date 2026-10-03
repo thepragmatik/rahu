@@ -46,31 +46,6 @@ class RunCommandTest {
     private record Run(int code, String out, String err) {
     }
 
-    /**
-     * A run plus whatever reached the real {@link System#out}.
-     *
-     * <p>{@code ReplayCommand} prints to {@code System.out} rather than to an injected
-     * {@code PrintWriter} (unlike {@code RunCommand}), so {@link #run} captures nothing
-     * for it. Without this, every assertion on replay's output silently passes on an
-     * empty string - which is how a self-contradicting message survived a full
-     * increment. Converting both trace commands to injected writers is recorded as
-     * AUDIT-2026-10-03-i; capturing the stream keeps this finding honest now.
-     */
-    private record Captured(int code, String systemOut, String err) {
-    }
-
-    private static Captured capturingSystemOut(java.util.function.Supplier<Run> body) {
-        PrintStream real = System.out;
-        ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-        try {
-            System.setOut(new PrintStream(buffer, true, StandardCharsets.UTF_8));
-            Run r = body.get();
-            return new Captured(r.code(), buffer.toString(StandardCharsets.UTF_8), r.err());
-        } finally {
-            System.setOut(real);
-        }
-    }
-
     private static Run run(String stdin, String... args) {
         StringWriter out = new StringWriter();
         StringWriter err = new StringWriter();
@@ -666,14 +641,17 @@ class RunCommandTest {
         // stream; converting both trace commands to injected writers is recorded as
         // AUDIT-2026-10-03-i rather than smuggled in here.
         for (String mode : new String[] {"json", "text"}) {
-            Captured replay = capturingSystemOut(
-                () -> run("", "replay", "--format", mode, runDirectory.toString()));
+            // Through the ordinary harness: replay now writes to picocli's writers
+            // (AUDIT-2026-10-03-i), so this captures the same output with no
+            // System.setOut. If a future change routes it back to the real stream,
+            // the assertions below fail on an empty string and say so.
+            Run replay = run("", "replay", "--format", mode, runDirectory.toString());
             assertEquals(3, replay.code(),
                 "UNAVAILABLE must be a distinct exit code, not a success (" + mode + "): "
-                    + replay.systemOut() + replay.err());
+                    + replay.out() + replay.err());
             // The reason must be the SPECIFIC one for an offline run.
-            assertTrue(replay.systemOut().contains("no RouteResolved"),
-                mode + " stdout was: <" + replay.systemOut() + "> stderr: " + replay.err());
+            assertTrue(replay.out().contains("no RouteResolved"),
+                mode + " stdout was: <" + replay.out() + "> stderr: " + replay.err());
             // Every line must agree with that reason.
             //
             // Asserted as a PROPERTY rather than a banned phrase: the earlier version
@@ -682,7 +660,7 @@ class RunCommandTest {
             // - SURVIVED that assertion. Banning wording is fragile; the property is
             // that no line may advise changing trace.capture, since this run's config
             // already had it right. Every mention must be the qualified one.
-            for (String line : replay.systemOut().split("\n")) {
+            for (String line : replay.out().split("\n")) {
                 if (line.contains("capture=payloads")) {
                     assertTrue(line.contains("necessary but not sufficient"),
                         "a line advises changing trace.capture on a run whose config "
@@ -693,14 +671,24 @@ class RunCommandTest {
                 assertFalse(line.contains("Run a chat turn first"),
                     "the output gives unachievable advice in " + mode + ": " + line);
             }
+            // A POSITIVE CONTROL, added in AUDIT-2026-10-03-i. Every assertion above
+            // passes on an EMPTY string, which is precisely the trap this increment
+            // removed: a vacuous assertion is indistinguishable from a passing one.
+            // So assert the capture is genuinely non-trivial. If output ever goes
+            // missing again, this fails loudly instead of the checks above silently
+            // becoming true of nothing.
+            assertTrue(replay.out().length() > 40,
+                "replay produced almost no output, so the assertions above are reading "
+                    + "nothing: <" + replay.out() + ">");
+
             // And exactly one line of advice, so a future line cannot quietly reappear
             // beside it.
-            long advice = replay.systemOut().lines()
+            long advice = replay.out().lines()
                 .filter(l -> l.contains("capture=payloads")
                     || l.contains("Run a chat turn")).count();
             assertTrue(advice <= 1,
                 "at most one line may mention the capture flag (" + mode + "), got: "
-                    + replay.systemOut());
+                    + replay.out());
         }
 
     }

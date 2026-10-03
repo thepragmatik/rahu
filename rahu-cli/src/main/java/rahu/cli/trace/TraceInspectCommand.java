@@ -10,6 +10,9 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.io.PrintWriter;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 import java.util.Optional;
 import java.util.TreeMap;
 import picocli.CommandLine.Command;
@@ -71,14 +74,32 @@ public final class TraceInspectCommand implements java.util.concurrent.Callable<
             + " payloads.")
     boolean verbose;
 
+    @Spec
+    CommandSpec spec;
+
+    /**
+     * Where this command's output goes: picocli's writers, not {@code System.out}.
+     *
+     * <p>AUDIT-2026-10-03-i. Printing to the real stream meant the test harness
+     * captured nothing here either, so a completeness report - the entire point of
+     * {@code trace inspect} - could change arbitrarily and stay green.
+     */
+    private PrintWriter out() {
+        return spec.commandLine().getOut();
+    }
+
+    private PrintWriter err() {
+        return spec.commandLine().getErr();
+    }
+
     @Override
     public Integer call() {
-        Optional<Path> located = RunLocator.locate(runPath);
+        Optional<Path> located = RunLocator.locate(runPath, err());
         if (located.isEmpty()) {
-            System.err.println("no run trace under " + runPath + "; expected a run directory"
+            err().println("no run trace under " + runPath + "; expected a run directory"
                 + " containing " + TraceFiles.EVENTS + ".");
             if ("json".equals(format)) {
-                System.out.println("{\"status\":\"NOT_FOUND\",\"path\":"
+                out().println("{\"status\":\"NOT_FOUND\",\"path\":"
                     + quote(runPath.toString()) + "}");
             }
             return ExitCode.INVALID_INPUT;
@@ -89,10 +110,10 @@ public final class TraceInspectCommand implements java.util.concurrent.Callable<
         try {
             events = readEvents(directory);
         } catch (IOException | RuntimeException e) {
-            System.err.println("trace integrity: " + TraceFiles.EVENTS + " is unreadable: "
+            err().println("trace integrity: " + TraceFiles.EVENTS + " is unreadable: "
                 + e.getMessage());
             if ("json".equals(format)) {
-                System.out.println("{\"status\":\"INTEGRITY_FAILURE\",\"reason\":"
+                out().println("{\"status\":\"INTEGRITY_FAILURE\",\"reason\":"
                     + quote(e.getMessage()) + "}");
             }
             return ExitCode.TRACE_INTEGRITY_FAILURE;
@@ -106,9 +127,9 @@ public final class TraceInspectCommand implements java.util.concurrent.Callable<
         Map<String, Object> report = summarise(directory, events, integrity);
 
         if ("json".equals(format)) {
-            System.out.println(toJson(report));
+            out().println(toJson(report));
         } else {
-            System.out.println(toText(report, events));
+            out().println(toText(report, events));
         }
         return integrity.isPresent() ? ExitCode.TRACE_INTEGRITY_FAILURE : ExitCode.OK;
     }

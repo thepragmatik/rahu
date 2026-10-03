@@ -8,6 +8,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.io.PrintWriter;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 import java.util.Optional;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -65,11 +68,32 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
     @Option(names = "--format", description = "text or json (default text)")
     String format = "text";
 
+    @Spec
+    CommandSpec spec;
+
+    /**
+     * Where this command's output goes.
+     *
+     * <p>picocli's writers, not {@code System.out}. AUDIT-2026-10-03-i: this command
+     * printed to the real stream, so the test harness captured nothing for it and
+     * every assertion on replay's output passed on an EMPTY STRING. A message that
+     * contradicted itself survived a full increment for exactly that reason - the
+     * assertions were not weak, they were reading nothing. Anything a test must be
+     * able to check has to arrive through an injected writer.
+     */
+    private PrintWriter out() {
+        return spec.commandLine().getOut();
+    }
+
+    private PrintWriter err() {
+        return spec.commandLine().getErr();
+    }
+
     @Override
     public Integer call() {
         Optional<Path> runDirectory = resolveRunDirectory();
         if (runDirectory.isEmpty()) {
-            System.err.println("no run trace under " + runPath
+            err().println("no run trace under " + runPath
                 + "; expected a run directory containing events.jsonl."
                 + " Run a chat turn with trace.capture=payloads first.");
             return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
@@ -82,10 +106,10 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
         // claim from what happened (A16, cli.md:42 exit 5).
         Optional<String> integrity = integrityProblem(directory);
         if (integrity.isPresent()) {
-            System.err.println("trace integrity: " + integrity.get()
+            err().println("trace integrity: " + integrity.get()
                 + "; refusing to replay an incomplete run");
             if ("json".equals(format)) {
-                System.out.println("{\"status\":\"INTEGRITY_FAILURE\",\"reason\":"
+                out().println("{\"status\":\"INTEGRITY_FAILURE\",\"reason\":"
                     + quote(integrity.get()) + "}");
             }
             return ExitCode.TRACE_INTEGRITY_FAILURE;
@@ -101,9 +125,9 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
             if (e instanceof java.io.FileNotFoundException) {
                 return unavailable(e.getMessage());
             }
-            System.err.println("capture unusable: " + e.getMessage());
+            err().println("capture unusable: " + e.getMessage());
             if ("json".equals(format)) {
-                System.out.println("{\"status\":\"CAPTURE_UNUSABLE\",\"reason\":"
+                out().println("{\"status\":\"CAPTURE_UNUSABLE\",\"reason\":"
                     + quote(e.getMessage()) + "}");
             }
             return ExitCode.TRACE_INTEGRITY_FAILURE;
@@ -121,24 +145,24 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
         boolean agrees = live.map(r -> agreesWith(r, outcome)).orElse(true);
 
         if ("json".equals(format)) {
-            System.out.println(json(outcome, live, agrees));
+            out().println(json(outcome, live, agrees));
         } else {
-            System.out.println(text(outcome, live, agrees));
+            out().println(text(outcome, live, agrees));
         }
         return ExitCode.OK;
     }
 
     private int unavailable(String reason) {
         if ("json".equals(format)) {
-            System.out.println("{\"status\":\"UNAVAILABLE\",\"reason\":" + quote(reason) + "}");
+            out().println("{\"status\":\"UNAVAILABLE\",\"reason\":" + quote(reason) + "}");
         } else {
-            System.out.println("replay unavailable: " + reason);
+            out().println("replay unavailable: " + reason);
             // AUDIT-2026-10-03-h: this second line repeated the unconditional blame
             // even after `reason` had become specific, so the output contradicted
             // itself - "offline routed nothing" immediately followed by "you need
             // capture=payloads". The reason above is now cause-specific; this line
             // states only what is true in every case.
-            System.out.println("Nothing was reconstructed or guessed: replay re-derives"
+            out().println("Nothing was reconstructed or guessed: replay re-derives"
                 + " only from inputs this run actually recorded.");
         }
         return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
@@ -154,7 +178,7 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
      * qualify the caller is told which rather than being handed one of them.
      */
     private Optional<Path> resolveRunDirectory() {
-        return RunLocator.locate(runPath);
+        return RunLocator.locate(runPath, err());
     }
 
     // --------------------------------------------------------------- integrity
@@ -199,7 +223,7 @@ public final class ReplayCommand implements java.util.concurrent.Callable<Intege
             // A missing or unreadable live record is not fatal: the replay itself is
             // still valid, it just cannot be compared. Say so rather than implying
             // agreement.
-            System.err.println("note: could not read the recorded route for comparison: "
+            err().println("note: could not read the recorded route for comparison: "
                 + e.getMessage());
         }
         return Optional.empty();

@@ -1,6 +1,7 @@
 package rahu.cli.trace;
 
 import java.io.IOException;
+import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,8 +38,14 @@ public final class RunLocator {
      * several qualify the caller is told rather than handed one of them. Picking
      * the first would report on a different run than the operator asked for, and
      * for a trace command that error is the whole output.
+     *
+     * <p>{@code err} is where the diagnostics go, rather than {@code System.err}:
+     * AUDIT-2026-10-03-i. This method is the one place both trace commands learn
+     * WHICH run was asked for, and when it printed to the real stream no test could
+     * assert on it. A caller that cannot capture this class cannot test its own
+     * error path.
      */
-    public static Optional<Path> locate(Path runPath) {
+    public static Optional<Path> locate(Path runPath, PrintWriter err) {
         if (runPath == null) {
             return Optional.empty();
         }
@@ -59,14 +66,14 @@ public final class RunLocator {
                     .filter(d -> Files.isRegularFile(d.resolve(TraceFiles.EVENTS)))
                     .forEach(found::add);
             } catch (IOException e) {
-                System.err.println("cannot list " + runPath + ": " + e.getMessage());
+                err.println("cannot list " + runPath + ": " + e.getMessage());
             }
         }
         if (found.size() == 1) {
             return Optional.of(found.get(0));
         }
         if (found.size() > 1) {
-            System.err.println(runPath + " holds " + found.size() + " runs; pass the run"
+            err.println(runPath + " holds " + found.size() + " runs; pass the run"
                 + " directory explicitly. Candidates: "
                 + found.stream().map(p -> p.getFileName().toString()).sorted().toList());
         }

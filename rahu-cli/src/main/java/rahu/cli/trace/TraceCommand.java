@@ -13,6 +13,8 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import picocli.CommandLine.Command;
+import picocli.CommandLine.Spec;
+import picocli.CommandLine.Model.CommandSpec;
 import picocli.CommandLine.Option;
 import picocli.CommandLine.Parameters;
 import rahu.cli.live.ExitCode;
@@ -56,12 +58,17 @@ import rahu.cli.live.ExitCode;
     subcommands = { TraceInspectCommand.class })
 public class TraceCommand implements java.util.concurrent.Callable<Integer> {
 
+    @Spec
+    CommandSpec spec;
+
     @Override
     public Integer call() {
         // `rahu trace` alone lists what it can inspect, so the command is
-        // discoverable rather than silently doing nothing.
-        System.err.println("usage: rahu trace inspect RUN_PATH [--format text|json]"
-            + " [--verbose]");
+        // discoverable rather than silently doing nothing. AUDIT-2026-10-03-i: via
+        // picocli's writer, so a test can assert the usage text it is the sole
+        // output of.
+        spec.commandLine().getErr().println(
+            "usage: rahu trace inspect RUN_PATH [--format text|json] [--verbose]");
         return ExitCode.INVALID_INPUT;
     }
 

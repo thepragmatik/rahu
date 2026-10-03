@@ -1131,3 +1131,101 @@ output agree and neither tells the operator to change a correct config. 438 test
   assertable by capturing the real stream.
 - `DemoCommand` still hand-builds its trace rather than using `RunTracer`.
 - `confidenceField` remains an inert config key (AUDIT-e).
+
+
+---
+
+## AUDIT-2026-10-03-i — three commands whose output no test could see
+
+Registered as a one-line leftover. It was the worst defect shape found in this audit,
+and it was only found because a mutation *survived*.
+
+### The defect
+
+`ReplayCommand`, `TraceInspectCommand` and `TraceCommand` printed to `System.out` /
+`System.err` while every other command used picocli's injected writers. The test
+harness sets those writers, so it captured **nothing** for these three — and every
+assertion on their output passed on an **empty string**.
+
+That is the most dangerous kind of test defect, because it is invisible. The
+assertions look real, the suite is green, and the code is wrong. It is precisely how
+`replay` survived an increment telling operators to change an already-correct config
+while its own test "verified" the message: the assertions were not weak, they were
+reading nothing.
+
+Worse, `RunCommandTest` had already grown a `capturingSystemOut` workaround with a
+comment explaining it. The workaround was *keeping the defect alive and documented*
+rather than fixing it — the previous increment noticed the problem and routed around
+it, which is what made it feel resolved.
+
+`RunLocator` — the shared locator both trace commands call, and the one place the
+codebase decides *which* run was asked for — printed to `System.err` from a `static`
+method with no access to a writer. So the diagnostic that names the candidates when
+several runs match was unreachable from any test.
+
+### The fix
+
+All three commands take `@Spec CommandSpec` and route through
+`spec.commandLine().getOut()/getErr()`. `RunLocator.locate` now takes an injected
+`PrintWriter` instead of reaching for the global stream. The `capturingSystemOut`
+workaround and its `Captured` record are **deleted** — the test now uses the ordinary
+harness, so a future regression that returns to the real stream fails on an empty
+string rather than being papered over.
+
+### Two tests, because catching the instance is not enough
+
+`InjectedOutputTest` closes the *class*, not just the three files:
+
+1. **A source scan** over `src/main/java` — a new command that reaches for
+   `System.out` fails the build rather than quietly becoming untestable.
+2. **A subcommand guard** — the scan exempts prints inside `public static void main`,
+   because a `main` body invoked by `mvn exec:java` is a program entry point with no
+   picocli writers to route through. That exemption is only honest while those files
+   are *not* shipped commands, so the guard asserts it: if `SchemaGenerator` or
+   `ShadowCorpusProbe` were ever registered in `Main`'s subcommands, their `main`
+   bodies would become a library path and the guard fails. Verified rather than
+   assumed — neither is currently in `Main`.
+
+The exemption is scoped **structurally** (position after a `main` declaration), not by
+a hand-maintained list of filenames, so a renamed file cannot silently re-enter scope.
+
+### A vacuous assertion is indistinguishable from a passing one
+
+The property assertions on replay's output all pass on an empty string — the exact trap
+this increment removes. So `RunCommandTest` now asserts `replay.out().length() > 40` as
+a **positive control**: if output ever goes missing again, that fails loudly instead of
+the checks above silently becoming true of nothing.
+
+### What I got wrong while verifying the guard
+
+I mutated the *guard* four ways to check it was tamper-resistant. Three of those
+mutations were **self-disabling** — disabling a check cannot make the check fail, so
+they proved nothing and I discarded them. A green result from "remove the guard" is not
+evidence the guard works. Replaced with mutations of the **production** code in each
+API shape the scan claims to cover, which is the only honest test:
+
+| Real bypass restored | Result |
+|---|---|
+| `System.out.print` (no `println`) | 1 failure |
+| `System.out.printf` | 1 failure |
+| `System.out.format` | 1 failure |
+| `System.out.println` in `ReplayCommand` | 1 failure |
+| `System.out.println` in `TraceInspectCommand` | 2 failures |
+| `System.err.println` in `TraceCommand` | 2 failures |
+| `System.err.println` in `RunLocator` | 1 failure |
+
+One incidental correction: the scan first hard-coded `src/main/java`, which surefire
+only happens to satisfy. It now resolves the tree from the test class's own code source,
+so it does not depend on how the tests are launched.
+
+### Packaged binary
+
+Behaviour unchanged, streams still split correctly under redirection: replay exits 3
+with the cause-specific message, `trace inspect` reports `COMPLETE`, bare `rahu trace`
+puts usage on stderr and stdout stays empty (0 bytes), JSON stays machine-parseable,
+and the multi-run parent still names its candidates. 442 tests green.
+
+### Still open
+
+- `DemoCommand` still hand-builds its trace rather than using `RunTracer`.
+- `confidenceField` remains an inert config key (AUDIT-e).
