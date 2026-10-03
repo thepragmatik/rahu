@@ -90,7 +90,9 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | ~~C-3~~ | — | **FIXED** (`9bb0078`, AUDIT-2026-10-03-r) — the estimate is now an unclamped measurement; the bound is applied at each port that requires one. Row left struck rather than deleted so the audit trail stays. | — |
 | ~~row 91~~ | — | **CORRECTED (AUDIT-s)** — this row was wrong twice. It said "five" while naming four, and one of the four (`routing.confidenceField`) is the key the table's own F-11 claims is fixed. Of the remainder: `decision.confidenceSemantics` is now **refused at load** (it was never a real key); `OperationRequirements.isTextAnswer` / `.structuredOutputRequired` are still inert but are future scaffolding, not inert config — see the AUDIT-l sweep. | — |
 | G07 gap | MED | No third-party compiled extension example exists. The registry is wired and tested. | Needs an out-of-tree module built and run. |
-| A25–A32 | MED | Eight acceptance IDs rest on slice reviews rather than one test each. This is the last row blocking the M1 offline declaration. | Eight small named tests. |
+| A19, A25–A32 | MED | Eight acceptance IDs rested on slice reviews rather than one test each. This is the last row blocking the M1 offline declaration. | Eight small named tests. |
+| ~~A19~~ | — | **DONE (AUDIT-2026-10-03-ae)** — the preview toolchain was ceremonial: 356 class files, zero with the preview marker, and the jar ran fine without the flag. Now 5 tests read the bytecode and tie it to the pom/launcher; 8 mutations caught. | — |
+| A01, A17, A20, A30 | MED | The four acceptance IDs still with **no** test at all. | Four small named tests. |
 
 ---
 
@@ -3423,3 +3425,106 @@ online.
 
 **553 tests green** (184 core / 21 openrouter / 36 systemone / 316 cli), 0 skipped.
 `DocumentedClaimsTest` caught the README a fourth time (546 -> 552 -> 553).
+
+
+---
+
+## AUDIT-2026-10-03-ae — A19: a preview toolchain that protects nothing
+
+The register's A25-A32 row names this as "the last row blocking the M1 offline declaration".
+Five acceptance IDs had no test at all: **A01, A17, A19, A20, A30**. A19 is the one with
+hard, offline-checkable claims, so I took it.
+
+### What was actually true
+
+A19 requires that "same JDK/release and preview flags succeed" across compile, test, package
+and launcher, and that there be "no stale preview API examples". What existed:
+
+- `pom.xml` compiler `<arg>--enable-preview</arg>`, surefire `<argLine>--enable-preview</argLine>`
+- `bin/rahu` exec'ing `java --enable-preview -jar`
+- ADR 0004, `engineering.md`, `autonomous-build.md`, `product.md` R13, `AGENTS.md`,
+  `README.md`, `CONTRIBUTING.md`, and two review docs all asserting preview is a deliberate,
+  verified part of this build
+
+**And no preview bytecode exists.** I scanned every compiled class: 356 class files, all
+major version 71, all minor version 0. Not one carries the preview marker (minor 65535).
+The jar runs identically with the flag removed:
+
+    java --enable-preview -jar rahu-cli.jar --version   -> rc=0  "rahu 0.1.0"
+    java                 -jar rahu-cli.jar --version   -> rc=0  "rahu 0.1.0"
+
+So the entire preview apparatus was ceremonial. That is a claim that had been green in five
+documents without ever having been exercised — the precise failure `engineering.md` itself
+warns about ("preview bytecode cannot pass tests and then fail for users") while providing
+no mechanism to notice.
+
+### Why this was dangerous in *both* directions
+
+- Someone adopts a real preview API. Every flag is already present, so nothing breaks — but
+  nothing also *records* that the flag became load-bearing, so the later "cleanup" that
+  drops `--enable-preview` compiles, tests green, and breaks only the packaged user.
+- A reviewer reads the pom, sees preview enabled, and concludes preview features are in use
+  and tested. They are not.
+
+### Five tests, and the one that is deliberately inverted
+
+`previewIsActuallyExercised()` **fails the moment preview bytecode appears**. Today there is
+none, and until someone writes a preview API that is the correct state — but it must be a
+measured fact read out of the class files, not an inherited assumption. I proved it fires by
+patching the preview marker into a real class file (minor 0 -> 65535 on
+`rahu/core/ModelRef.class`): it fails, naming the offending file and the follow-up work. The
+class file was restored byte-identical.
+
+The other four: every class file matches `maven.compiler.release` (a release bump without a
+rebuild is caught); the flag is present in *each* plugin block and in the launcher; the
+launcher's hand-written runtime floor matches the release it refuses below; and no spec or
+ADR names a preview API the code does not use.
+
+### Two defects found, both by the tests failing
+
+- **My Failsafe check was too crude.** `engineering.md` told maintainers to "configure
+  Surefire and **Failsafe** JVM arguments". This project has no Failsafe plugin and no
+  integration-test phase. Correcting the doc made it *mention* Failsafe — to say it does not
+  exist — which kept tripping a substring check. The contract was wrong, not the doc: A19
+  forbids *instructing* a maintainer to configure a phase that is not there, not the word
+  appearing. `prescribesFailsafe()` now reads the sentence and distinguishes the
+  prescription from the recorded absence.
+- **`engineering.md` also described structured concurrency in the present tense** as "a
+  justified starting experiment", naming `StructuredTaskScope` and `ScopedValue`. Neither
+  appears in `src/main`; there are no virtual threads either. Marked explicitly as available
+  but **not adopted**, with the `ShutdownOnFailure` staleness note kept, because that API
+  shape genuinely changed across previews and is the trap a future maintainer would hit.
+
+### All seven mutations caught
+
+| mutation | caught by |
+|---|---|
+| compiler `<arg>` deleted | previewPlumbingIsPresent... |
+| compiler flag replaced by another arg | previewPlumbingIsPresent... |
+| surefire `argLine` loses the flag | previewPlumbingIsPresent... |
+| launcher stops passing the flag | previewPlumbingIsPresent... |
+| launcher floor raised to 99 | launcherRefusalThresholdMatches... |
+| doc reverts to prescribing Failsafe | noStalePreviewApiExamples |
+| `release` bumped to 28, classes not rebuilt | everyClassFileMatches... |
+| real preview marker stamped into a class | previewIsActuallyExercised |
+
+pom, launcher and `engineering.md` all restored byte-identical afterwards (verified, not
+assumed).
+
+### M1 was the important one, and mutation caught it — not review
+
+My first version asserted `pom.contains("--enable-preview")`. M1 (deleting the compiler's
+`<arg>`) **passed**. The whole-file substring was still satisfied by the surefire
+`argLine`, which spells the same flag — so the test was green on a half-dismantled
+toolchain, precisely the drift it existed to catch. Only running the mutation revealed it;
+reading the test did not. Each site is now parsed inside its own plugin block.
+
+I also conflated units twice (`maven.compiler.release` is the Java *version* 27; the class
+file *major* is 71; the launcher gates on the version) — both times the test failed and
+told me, rather than my reasoning catching it.
+
+### A19 status
+
+Toolchain agreement (the first clause) is now **verified by test, not asserted by
+document**. The second clause is enforced for the docs that exist. This is one of the five
+A-IDs that had no coverage; A01, A17, A20 and A30 remain.
