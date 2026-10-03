@@ -21,7 +21,8 @@ Requirements: JDK 27 (`export JAVA_HOME=/path/to/jdk27`), network once for Maven
 1. `cp .env.example .env` and fill `OPENROUTER_API_KEY` (gitignored; loaded at startup — a real shell export overrides it).
 2. Point `config.local.json` (copy from `examples/live-local-systemone.json`) at your decision service and model pool. A ready pool of cheap models ships in `config.local.json` (Mistral Nemo, Qwen3-30B-A3B, gpt-oss-20b, Granite micro — all under $0.05/1M input tokens).
 3. Validate without billing: `./bin/rahu config validate --config config.local.json` (add `--live-check` for catalog checks).
-4. Chat (bounded by `session.maxCostUsd`): `./bin/rahu chat --config config.local.json`.
+4. Chat (bounded by `session.maxCostUsd`): `./bin/rahu chat --config config.local.json --input-classification approved-nonsensitive`.
+   The flag is required on a first run: `privacy.inputClassification` defaults to `unknown`, and strict mode then refuses **every** prompt with `privacy blocked (unknown-provenance)` and exit 4, regardless of content. Pass it only after assessing your prompt as free of protected data; the flag records an assessment and is not a bypass of protected-data detection.
 
 Privacy: `privacy.mode=strict` blocks unknown/provenance-unclear content before any model call; see [docs/specs/privacy.md](docs/specs/privacy.md). Live execution of eval requires explicit `--live --max-cost-usd` and G09 prerequisites.
 

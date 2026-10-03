@@ -58,6 +58,9 @@ public final class LiveTurnDriver {
     private final PrintWriter out;
     private final PrintWriter err;
 
+    /** Lazily built shared trace config; see trace(). */
+    private rahu.cli.trace.TurnTrace turnTrace;
+
     public LiveTurnDriver(RahuConfig cfg, ModelProvider provider, DecisionEngine decision,
         ActiveRouter router, SessionState session, Provenance provenance, ToolLoop toolLoop,
         Function<String, Integer> slashHandler, PrintWriter out, PrintWriter err) {
@@ -180,11 +183,11 @@ public final class LiveTurnDriver {
         // the driver and a dead trace subsystem: nothing in src/main used to construct
         // a TraceWriter, so G06 was recorded PASSED on tests whose subject production
         // code never called it. Every event below carries a value the driver holds.
-        var trace = new RunTracer(java.nio.file.Path.of(cfg.trace().directory()),
-            turn.runId(), session.sessionId());
+        // RunStarted is emitted by TurnTrace.begin so the offline loop writes the
+        // same opening event from the same code.
+        var trace = trace().begin(turn.runId(), session.turnCount());
         int generationSteps = 0;
         String terminal = "ANSWER_COMPLETE";
-        trace.runStarted(session.turnCount(), configHash(), catalogHash());
 
         try {
 
@@ -370,13 +373,8 @@ public final class LiveTurnDriver {
      * refusal must not change whether the input was blocked.
      */
     private void recordRefusal(String blockedCategory) {
-        String id = "refused-" + java.util.UUID.randomUUID();
-        try (var trace = new RunTracer(java.nio.file.Path.of(cfg.trace().directory()),
-            id, session.sessionId())) {
-            trace.runStarted(session.turnCount(), configHash(), catalogHash());
-            trace.refused(blockedCategory);
-            trace.runTerminated("PRIVACY_BLOCKED", 0);
-        } catch (TraceFailureException e) {
+        boolean recorded = trace().recordRefusal(session.turnCount(), blockedCategory);
+        if (!recorded) {
             err.println("trace write failed while recording a refusal (A16); the "
                 + "input was still blocked");
         }
@@ -391,7 +389,7 @@ public final class LiveTurnDriver {
      * retained by default and must carry no endpoint credentials.
      */
     private String configHash() {
-        return rahu.core.privacy.SafeView.sha256Of(String.valueOf(cfg));
+        return trace().configHash();
     }
 
     /**
@@ -402,9 +400,20 @@ public final class LiveTurnDriver {
      * distinguishes them without recording the models themselves.
      */
     private String catalogHash() {
-        Object catalog = cfg.catalog();
-        return catalog == null ? "absent"
-            : rahu.core.privacy.SafeView.sha256Of(String.valueOf(catalog));
+        return trace().catalogHash();
+    }
+
+    /**
+     * The shared trace configuration (root directory plus the config and catalog
+     * hashes), built once per driver so the live and offline loops cannot drift
+     * apart in how they identify a run. AUDIT-2026-10-03-b.
+     */
+    private rahu.cli.trace.TurnTrace trace() {
+        if (turnTrace == null) {
+            turnTrace = rahu.cli.trace.TurnTrace.forSession(
+                java.nio.file.Path.of(cfg.trace().directory()), cfg, session);
+        }
+        return turnTrace;
     }
     /**
      * Asks the decision plane which executable candidate to run, then resolves it.

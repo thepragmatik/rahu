@@ -57,43 +57,19 @@ public final class ChatCommand implements Callable<Integer> {
 
     // --------------------------------------------------------------- offline
 
+    /**
+     * The offline loop. The body lives in {@link rahu.cli.live.OfflineTurnDriver}
+     * so it can be driven from a test; a loop inlined here reads {@code System.in}
+     * and is untestable, which is how AUDIT-2026-10-03-b's missing privacy gate and
+     * missing trace survived a green suite.
+     */
     private Integer runOffline(RahuConfig cfg) {
         var session = newSession(cfg, "offline");
-        var err = spec.commandLine().getErr();
-        var out = spec.commandLine().getOut();
-
-        err.println("rahu chat (offline) — /status /reset /exit, EOF to end");
-        Scanner scanner = new Scanner(System.in);
-        boolean interactive = System.console() != null;
-        while (scanner.hasNextLine()) {
-            prompt(interactive);
-            String line = scanner.nextLine();
-            if (line == null || line.isBlank()) {
-                continue;
-            }
-            if (line.startsWith("/")) {
-                Integer code = handleSlash(line.strip(), session);
-                if (code != null) {
-                    return code;
-                }
-                continue;
-            }
-            SessionState.RunHandle turn;
-            try {
-                turn = session.beginTurn();
-            } catch (IllegalStateException e) {
-                err.println("session limit: " + e.getMessage());
-                return 3;
-            }
-            turn.recordUser(ChatMessage.user(line));
-            String answer = "offline: composed a bounded read-only answer for \""
-                + line.strip() + "\". (No model was called; fake provider path.)";
-            turn.recordAssistant(ChatMessage.assistant(answer));
-            out.println(answer);
-            turn.complete();
-        }
-        err.println("eof: chat ended; history is memory-only and does not survive exit");
-        return 0;
+        return new rahu.cli.live.OfflineTurnDriver(cfg, session, provenance(cfg),
+            line -> handleSlash(line, session),
+            spec.commandLine().getOut(), spec.commandLine().getErr(),
+            rahu.cli.live.OfflineTurnDriver.fromStdin(),
+            System.console() != null).run();
     }
 
     /**

@@ -320,3 +320,111 @@ shape the audit exists to catch, and it should be the next increment.
 and asserting on the file that appeared. Not one of them constructs a
 `TraceWriter` directly, because that is the shape of test that passed against
 the broken state.
+
+
+---
+
+## AUDIT-2026-10-03-b — OFFLINE PATH: privacy gap + missing trace (both fixed)
+
+Commit in flight. Follows AUDIT-2026-10-03-a. Found by reading `runOffline`
+rather than trusting the gate record, then confirmed against a packaged build.
+
+### Correction to finding (a)
+
+I described the offline loop as duplicated driver logic and offered to collapse
+the duplication. That was wrong. `runOffline` calls no model, no tools and no
+router; there is no duplication to collapse. Recorded because the wrong framing
+would have led to a much larger and less justified change.
+
+### Finding 1 — the offline path had no privacy gate (severity: high)
+
+`runOffline` admitted input with no `PrivacyGate` call at all, then echoed the
+raw input back to stdout. Verified, not inferred:
+
+```
+$ printf 'my email is bob@example.com and my card is 4111111111111111\n' \
+    | ./bin/rahu chat --config=offline.json
+offline: composed a bounded read-only answer for "my email is bob@example.com
+and my card is 4111111111111111". (No model was called; fake provider path.)
+exit 0
+```
+
+Both values printed verbatim; exit 0. The live loop refuses the same input.
+
+Why this mattered more than a missing feature: **offline is the DEFAULT mode**
+(configuration.md) and privacy defaults to `strict` + `block`, so the least
+protected path in the product was the one a new user meets first. cli.md is
+explicit — "safe diagnostics and provenance checks apply even when no model call
+is planned". There was no privacy check anywhere on that path.
+
+### Finding 2 — the offline path wrote no trace
+
+Same run: `trace.directory` was honoured nowhere; 0 files. product.md makes a
+complete route/tool/termination trace the FIRST thing a new user sees, offline,
+specifically so the concepts are learnable without API keys. That first-run
+experience was unreachable under the default configuration, which is the exact
+opposite of what the spec intends offline mode to be for.
+
+### What the fix does NOT do
+
+It does not invent events. Offline mode resolves no route and calls no model, so
+the trace records only `RunStarted` + `RunTerminated`, and the refusal path
+`RunStarted` + `RunRefused` + `RunTerminated`. No synthetic `RouteResolved`, no
+synthetic `ModelRequested` — writing those would reproduce exactly the
+`"synthetic"` hashes this audit used to discredit the four demo traces.
+
+Verified on the packaged binary: 1 trace per turn, real 64-hex config hash,
+`RunTerminated.reason=ANSWER_COMPLETE`, refusal on a `refused-` id with
+`PRIVACY_BLOCKED`, exit 4 blocked / 0 admitted, and **zero** PII in any trace.
+
+### Shared, not copied
+
+`TurnTrace` now owns the trace root plus the config and catalog hashes, and both
+loops call it. Copying the live pattern into the offline loop would have created
+two implementations that start identical and drift on the first change — which is
+how one fix becomes two half-fixes. `RunStarted` is emitted once, in
+`TurnTrace.begin`.
+
+### The test's own gap, found by mutation testing
+
+I re-introduced the input echo as a mutation and **all tests still passed**. The
+test covered the refused path's stdout but never the admitted path's, so half the
+defect had no coverage. Added
+`admittedTurnDoesNotEchoInput` with the reasoning recorded in the test.
+
+This is the second time in this audit that a green suite turned out to have no
+power over the defect it was written for. Mutation testing is not optional here.
+
+Full mutation battery, every one now producing failures:
+
+| Mutation | Result |
+|---|---|
+| privacy gate bypassed | 2 failures |
+| input echoed again | 1 failure (was 0 before the test fix) |
+| terminal event removed | 1 failure |
+| refusal not traced | 1 failure |
+| trace.directory ignored | 3 failures |
+
+One mutation is deliberately absent: no sink-failure test. A16 stop-on-broken-sink
+for the offline loop is implemented but not covered by a test; it is the next
+increment rather than a claim made now.
+
+### Finding 3 — the README quickstart could not work (fixed, docs only)
+
+Step 4 said `./bin/rahu chat --config config.local.json`. With the shipped
+defaults (`inputClassification: unknown`, strict, block) that refuses **every**
+prompt with `privacy blocked (unknown-provenance)` and exit 4 — clean prompts
+included. A reader following the quickstart literally would conclude the product
+was broken. The step now names the flag and explains why, including that it is an
+assessment and not a bypass.
+
+This is a pre-existing documentation defect, present before either of my
+changes. It became visible only because the offline loop now gates privacy.
+
+### Gate status
+
+G06 stays **PARTIAL**. Closed in this increment: the offline path now traces and
+gates. Still open: `DemoCommand` hand-builds a hardcoded trace instead of using
+`RunTracer`; `trace.capture` and `trace.onFailure` are still parsed-but-unread,
+so `capture=full` remains silently ignored — the same inert-key shape this audit
+exists to catch.
