@@ -1349,3 +1349,61 @@ the CLI. Worth its own increment.
 ### Still open
 
 - `confidenceField` remains an inert config key (AUDIT-e).
+
+
+---
+
+## AUDIT-2026-10-03-k — the offline path never builds a result, so it reports nothing
+
+Found by following AUDIT-j's footer finding rather than filing it. The cause is
+structural, and it is why the cost conflation in AUDIT-j was invisible through the CLI.
+
+### The defect
+
+`runOffline` ends with `return code;` — an `int`. The live path instead builds a
+`TurnOutcome` and calls `footer(outcome)`, which is what prints the routing line, the
+token line and the cost line. So **offline `run` prints an answer and nothing else.**
+
+Verified pre-existing (HEAD in a clean worktree produced byte-identical stdout/stderr),
+so this did not originate in AUDIT-j.
+
+Two consequences, and the second is worse than the missing footer:
+
+1. The human footer is absent, so an operator running offline gets no routing, no cost
+   and no token information at all.
+
+2. `renderOfflineJson` cannot report anything it did not hardcode. It emits
+   `"routing":null,"cost":null` as **literal constants**, so the offline JSON document
+   is a fixed string with `status`/`exitCode`/`runId` interpolated — it is not a
+   rendering of what happened. It happens to be *honest* today (the offline engine
+   genuinely resolves no route and calls no model), but it is honest by hardcoding, not
+   by observation. The moment the offline driver resolves a route or the trace records
+   one, the document will still claim `null`.
+
+### The trace records less than the live path, and that is correct
+
+The offline trace holds only `RunStarted` + `RunTerminated`. That is *right*: no route
+is resolved and no model is called, so there is no `RouteResolved` or `ModelCompleted`
+to record. Manufacturing those events to make the trace look uniform would be the
+AUDIT-f mistake in a new place — recording a claim the run never made. Left alone
+deliberately.
+
+### The actual fix
+
+`OfflineTurnDriver` returns `int` from four exit points (OK, slash-exit, privacy
+blocked, session limit, trace failure) and keeps only `lastRunId` as residual state.
+The honest fix is to have it expose the `TurnOutcome` it actually observed, the way
+the live driver does, so `runOffline` renders the SAME document builder and the footer
+comes from the same place. Then the offline JSON stops being hardcoded constants and
+becomes a rendering — and if the offline path ever does resolve a route, the document
+will say so without anyone editing a string.
+
+This is a real change to a driver signature and is deliberately NOT bundled into AUDIT-j,
+which was about two trace writers and one conflation. It gets its own increment with its
+own mutation battery.
+
+### Register entry
+
+Open, scoped, with the constraint above (observe, never fabricate). It is the reason
+`run --format json` currently cannot be trusted to reflect an offline run's actual
+routing/cost state if that state ever changes.
