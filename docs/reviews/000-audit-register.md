@@ -2687,3 +2687,87 @@ tree, which I could have reported as green. Without `-q` it is `SURVIVED (27 tes
 `NO-SUMMARY` is not a pass; a run that proves nothing must be reported as proving nothing.
 
 512 tests green.
+
+
+---
+
+## AUDIT-2026-10-03-w — A26: the extension surface is inert, and the whole admission pipeline is test-only
+
+A26 requires a test-only compiled extension to "work through common policy", with
+"effectful registrations denied". Neither half is true today. The interesting part is
+that the two halves fail in **opposite directions**, so the surface is simultaneously
+safe and non-functional.
+
+### What I found, and how I established it
+
+| question | how | answer |
+|---|---|---|
+| does `Tool` carry a declared effect? | read `Tool.java`, `ToolDescriptor.java` | **no field at all** |
+| is `EffectClass` enforced anywhere? | grep `EffectClass` across all main sources | only in `AdmissionPipeline.evaluate` |
+| does production construct a `ProposedOperation`? | grep across every `.java` | **zero sites** — only tests |
+| who executes tools in production? | read `ToolLoop.observationOf` | `WorkspaceTools.executeToolCall` |
+| does that consult the registry? | read `WorkspaceTools.invoke` | **no** — a hardcoded 3-case switch |
+| is `Tool.execute` called in production? | grep `\.execute\|\.executor()` | **never** |
+
+So there are **two dispatch mechanisms that do not talk to each other**. The registry
+decides which tool names are legal; `WorkspaceTools.invoke` decides what actually runs.
+A third-party `Tool` composes cleanly, is advertised to the provider in the tool
+descriptors, passes the privacy and injection gates — and then cannot run.
+
+### The two failures point opposite ways
+
+1. **Safe, by accident.** No third-party tool can execute, so the missing effect-class
+   check on `Tool` cannot be exploited *yet*.
+2. **Broken, by contract.** `extensibility.md` and A26 promise a working extension
+   path. Registering `acme.metrics`, advertising it, and then answering `unknown tool`
+   is not a working path.
+
+And the enforcement that *looks* like it covers this is entirely unreachable:
+`AdmissionPipeline`, `EffectClass`, and `ProposedOperation` are a complete, tested,
+correct subsystem that no production code calls. `AuthorityAndOrchestrationTest` and
+`CancellationTest` prove it works. Nothing proves it is *used*.
+
+### A test that asserts a claim instead of enforcement
+
+`ToolRegistryTest.rejectsDuplicate` ends with this comment:
+
+> *"the registry itself only ships read-only tools, so an effectful one has no
+> registration path."*
+
+That is a claim about current content, not a property of the type. `ToolRegistry.of`
+accepts any `Tool` with any `Executor`; a `DESTRUCTIVE` one composes without complaint,
+because there is no effect to check. I did not change that comment — it is accurate
+today and the new test pins it so it cannot become quietly false.
+
+### The tests pin the defect, and the fix shape must break them
+
+`ExtensionSurfaceTest` asserts what the surface **does**. `executorSurfaceIsInert` reads
+the production source and requires the hardcoded switch to still be there, with a
+comment stating that anyone wiring `Tool.execute` into the loop **must add
+effect-class rejection in the same change** — otherwise the extension path executes
+unvetted third-party code.
+
+| mutation | result |
+|---|---|
+| `invoke`'s default branch stops returning `unknown tool` (the fix shape) | **CAUGHT (F=1)** |
+| `ToolRegistry` stops rejecting duplicate names | *survived here* — see below |
+| restored | SURVIVED (4 ran) |
+
+The duplicate mutation surviving in this class is correct, not a gap: I checked, and
+`ToolRegistryTest` catches it with **F=2**. Coverage belongs in the file that owns the
+rule; duplicating it would have added a test that proves nothing new.
+
+### Two errors LSP caught before the compiler
+
+`PathBoundary.under(...)` does not exist (it is a constructor), and one `result.status()`
+returned `Object` because the inference chain broke upstream. Worth noting: the LSP
+diagnostics were both real, and both would have read as noise in a large compile log.
+
+512 → **516 tests green** (176 core / 21 openrouter / 36 systemone / 283 cli).
+
+### Recommended next increment
+
+Wire `WorkspaceTools.invoke`'s default branch to the registry so a third-party tool can
+execute, and add the `EffectClass` field + rejection to `Tool` **in the same change**,
+so the working path and its gate arrive together. `ExtensionSurfaceTest` will go red on
+the first half, which is the intent.
