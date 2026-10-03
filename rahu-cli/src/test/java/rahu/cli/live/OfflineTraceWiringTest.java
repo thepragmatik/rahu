@@ -236,6 +236,63 @@ class OfflineTraceWiringTest {
         }
     }
 
+    /**
+     * A trace root that cannot be created: the parent path component is a regular
+     * FILE, so Files.createDirectories inside TraceWriter fails with an IOException
+     * and surfaces as TraceFailureException. That is a real broken sink reachable
+     * without root or special permissions - no mocking of the writer, so the test
+     * exercises the same failure a full disk or a revoked directory would produce.
+     */
+    private Path brokenSink() throws Exception {
+        Path blocker = root.resolve("blocker");
+        Files.writeString(blocker, "i am a file, not a directory");
+        return blocker.resolve("traces");
+    }
+
+    @Test
+    @DisplayName("A16: a broken trace sink stops the turn rather than faking success")
+    void brokenSinkStopsTheTurn() throws Exception {
+        // A16 (observability.md): an append failure must stop new work. A turn
+        // that printed its answer and exited 0 while its trace never reached disk
+        // would be the exact failure A16 exists to prevent: the operator sees a
+        // success and an archive that disagrees with it.
+        var result = drive(brokenSink(), "approved-nonsensitive", CLEAN_INPUT);
+
+        assertEquals(5, result.exit(), "a broken sink stops the turn: " + result.err());
+        assertTrue(result.err().contains("trace write failed"),
+            "the failure must be reported, not silent: " + result.err());
+        assertFalse(result.out().contains("offline:"),
+            "no answer may be presented for a turn whose trace could not be written: "
+                + result.out());
+    }
+
+    @Test
+    @DisplayName("A16: a broken sink cannot turn a refusal into an admission")
+    void brokenSinkCannotAdmitRefusedInput() throws Exception {
+        // The dangerous direction. recordRefusal swallows the sink failure and
+        // returns false, so this is the one place where an I/O error could
+        // plausibly be mistaken for "nothing to record, carry on". The refusal
+        // must survive the failure: exit 4 and no content, exactly as with a
+        // healthy sink. A privacy decision must not depend on whether tracing
+        // worked.
+        var result = drive(brokenSink(), "unknown", PII_INPUT);
+
+        assertEquals(4, result.exit(),
+            "the input stays blocked even when the refusal cannot be traced: " + result.err());
+        assertTrue(result.err().contains("privacy blocked"),
+            "the refusal is still reported: " + result.err());
+        assertFalse(result.out().contains("bob@example.com"),
+            "no content on any path: " + result.out());
+        assertFalse(result.err().contains("4111111111111111"),
+            "no content in the diagnostic either: " + result.err());
+        // Mutation testing found this assertion missing: dropping the warning was
+        // invisible. Without it the operator sees a clean privacy refusal and no
+        // indication that their trace archive now has a hole in it - the refusal
+        // is on stdout, the record of it is not on disk, and nothing says so.
+        assertTrue(result.err().contains("trace write failed"),
+            "an untraceable refusal must still be reported as an I/O failure: " + result.err());
+    }
+
     @Test
     @DisplayName("every line of input is processed, not every other one")
     void everyLineIsProcessed() throws Exception {

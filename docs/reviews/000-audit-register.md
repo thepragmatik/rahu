@@ -428,3 +428,94 @@ gates. Still open: `DemoCommand` hand-builds a hardcoded trace instead of using
 `RunTracer`; `trace.capture` and `trace.onFailure` are still parsed-but-unread,
 so `capture=full` remains silently ignored — the same inert-key shape this audit
 exists to catch.
+
+
+---
+
+## AUDIT-2026-10-03-c — A16 sink failure was implemented but unproven (now covered)
+
+Follows AUDIT-2026-10-03-b. No behaviour change to production code; this
+increment closes the one gap I explicitly declined to claim in (b).
+
+### What was already right
+
+The offline loop's A16 handling was implemented when I wrote the driver: a
+`TraceFailureException` stops the turn and returns 5, and a failed refusal trace
+does not release the input. Reading it, both looked correct.
+
+### What was missing
+
+Nothing tested it. `TraceWriter` defers its open to the first append precisely so
+callers learn about a broken sink at the A16 checkpoint, which means the failure
+path is reachable in production and had zero coverage. An implemented-but-untested
+safety path is the weakest kind of claim: it reads as evidence in a review and is
+not.
+
+### How the sink is broken in the test
+
+By making the trace root's parent a regular FILE. `Files.createDirectories` then
+fails inside `TraceWriter.writer()` and surfaces as `TraceFailureException`. No
+mocking, no root, no special permissions — the same failure a full disk or a
+revoked directory produces, reached through the real config loader and the real
+driver.
+
+### Mutation testing found a third gap in my own tests
+
+First pass, two of four mutations died and two survived:
+
+| Mutation | Result |
+|---|---|
+| sink failure swallowed, exit 0 | caught |
+| reports failure but still exits 0 | caught |
+| refusal failure reported nowhere | **SURVIVED** |
+| refusal logged, loop continues (admits) | caught |
+
+The surviving one was the real finding. `recordRefusal` returns `false` on a
+sink failure and the driver prints a warning — but no test asserted the warning
+exists, so it could be deleted silently. The consequence is subtle and worth
+stating: the operator sees a clean privacy refusal on stderr and **no indication
+that their trace archive now has a hole in it**. The refusal happened; the
+record of it did not; nothing said so. Added the assertion; the mutation now
+dies.
+
+That is the third time in this audit a green suite turned out to lack power over
+the defect it was written for. Three for three. The pattern is now consistent
+enough to state as a rule rather than an anecdote — see the skill.
+
+### One mutation that turned out to be benign, recorded so it is not re-litigated
+
+Replacing `return 4` with `continue` on the refusal path *is* caught (2
+failures), which is the assertion doing its job. But an intermediate mutation
+that merely deleted the `if (!recordRefusal(...))` warning branch survived in the
+first pass and is the same defect as the one above — noted because "it survived"
+and "it is harmless" look identical from the outside and only the second reading
+was correct.
+
+### End-to-end confirmation on the packaged build
+
+Trace root under a regular file, real CLI, no test harness:
+
+```
+$ printf 'summarise the readme\n' | ./bin/rahu chat --config=... \
+      --input-classification=approved-nonsensitive
+rahu chat (offline) — /status /reset /exit, EOF to end
+trace write failed (A16); turn stopped
+exit 5
+
+$ printf 'my email is bob@example.com\n' | ./bin/rahu chat --config=...
+rahu chat (offline) — /status /reset /exit, EOF to end
+trace write failed while recording a refusal (A16); the input was still blocked
+privacy blocked (unknown-provenance); nothing was sent. ...
+exit 4
+```
+
+Note the first case prints NO answer. The turn is stopped before the answer is
+emitted, which is the correct order: an answer presented for a run whose trace
+never reached disk is the specific lie A16 exists to prevent.
+
+### Gate status
+
+G06 unchanged at PARTIAL. Closed here: A16 on the offline loop is now proven, not
+just implemented. Still open, unchanged: `DemoCommand` hand-builds a hardcoded
+trace instead of using `RunTracer`; `trace.capture` and `trace.onFailure` are
+still parsed-but-unread, so `capture=full` remains silently ignored.
