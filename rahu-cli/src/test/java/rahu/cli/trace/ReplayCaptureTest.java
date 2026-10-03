@@ -247,6 +247,132 @@ class ReplayCaptureTest {
 
     // ------------------------------------------------------------ determinism
 
+    // ==================================================================
+    // AUDIT-l item 1: after AUDIT-e made `confidenceField` select the field the
+    // floor reads, a capture that used `raw_confidence` stopped being
+    // REPLAYABLE - encodeDecision wrote neither rawConfidence nor the semantics
+    // identifier, so the replay rebuilt a decision with the field empty and the
+    // floor failed for a DIFFERENT reason than the live turn did.
+    //
+    // Its comment said semantics were omitted "because routing never consults
+    // them". True when written; FALSE as of AUDIT-e.
+    // ==================================================================
+
+    @Test
+    @DisplayName("an ABSENT raw confidence stays absent through a round trip")
+    void absentRawConfidenceStaysAbsent() throws IOException {
+        // Three mutations survived and all three shared ONE cause: nothing asserted
+        // that ABSENCE survives the round trip. Dropping the read-side null check,
+        // defaulting it to 0, and writing 0 for an absent score all produced a
+        // capture that LOOKED fine and replayed a confidence the provider never
+        // gave - the AUDIT-j conflation, one layer into the capture.
+        //
+        // The distinguishing case is a capture for `raw_confidence` whose decision
+        // carries NO provider score. Read as 0.0 it would fail the floor for the
+        // wrong reason and, worse, claim a measured confidence of zero.
+        var dir = root.resolve("absent-raw");
+        var noScore = new DecisionResult.ValidChoice("q", "fast@low",
+            Map.of("fast@low", 0.9, "quality@medium", 0.1), Optional.empty(), "none");
+
+        ReplayCapture.write(dir, CANDIDATES, RoutingMode.ACTIVE,
+            input("raw_confidence", 0.65), Optional.of(noScore));
+
+        var frozen = ReplayCapture.read(dir);
+        var replayed = frozen.decision().orElseThrow();
+        assertTrue(replayed instanceof DecisionResult.ValidChoice choice, "a choice");
+        assertEquals(Optional.empty(),
+            ((DecisionResult.ValidChoice) replayed).rawConfidence(),
+            "a decision with no provider score must replay as having none - not as "
+                + "0.0, which is a confidence claim the provider never made");
+
+        var json = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(Files.readString(dir.resolve(ReplayCapture.FILE)));
+        assertTrue(json.path("decision").path("rawConfidence").isNull(),
+            "an absent score must be written as JSON null, not 0: " + json);
+
+        // The RECONSTRUCTED object, not the capture text. Asserting only the file
+        // let a mutation that hardcoded the semantics to "captured" survive: the
+        // file was right and the object was wrong, which is the whole point of a
+        // round trip. systemone.md:36 requires the semantics identifier to travel
+        // with the score, so the decoded decision must still name the formula.
+        var scored = new DecisionResult.ValidChoice("q", "fast@low",
+            Map.of("fast@low", 0.9, "quality@medium", 0.1), Optional.of(0.8),
+            "provider_score");
+        var dir2 = root.resolve("semantics-round-trip");
+        ReplayCapture.write(dir2, CANDIDATES, RoutingMode.ACTIVE,
+            input("raw_confidence", 0.65), Optional.of(scored));
+        var decoded = (DecisionResult.ValidChoice) ReplayCapture.read(dir2)
+            .decision().orElseThrow();
+        assertEquals("provider_score", decoded.confidenceSemantics(),
+            "the decoded decision must name the formula that produced the score; "
+                + "reading it back as a fixed placeholder makes the capture a lie "
+                + "about which confidence it recorded");
+        assertEquals(Optional.empty(),
+            new RouteResolver().resolve(RoutingMode.ACTIVE, frozen.decision(), frozen.input())
+                .suggestedId(),
+            "and the floor must then fail, because there is no number to compare");
+    }
+
+    @Test
+    @DisplayName("a raw_confidence capture replays to the same outcome")
+    void rawConfidenceCaptureReplaysFaithfully() throws IOException {
+        var dir = root.resolve("raw-conf-replay");
+        // chosen_probability 0.5 is BELOW the 0.65 floor; raw_confidence 0.9 is
+        // above it. Only a capture carrying rawConfidence can replay this as the
+        // success the live turn produced.
+        var valid = new DecisionResult.ValidChoice("q", "fast@low",
+            Map.of("fast@low", 0.5, "quality@medium", 0.5), Optional.of(0.9),
+            "provider_score");
+
+        // write() returns the capture FILE; read() takes the run directory. My
+        // first draft passed the file to read() (FileNotFound); my "correction"
+        // then appended the filename again ("Not a directory"). Read() derives
+        // the path from the directory, so pass the directory.
+        ReplayCapture.write(dir, CANDIDATES, RoutingMode.ACTIVE,
+            input("raw_confidence", 0.65), Optional.of(valid));
+
+        ReplayCapture.Frozen frozen = ReplayCapture.read(dir);
+        var replayed = new RouteResolver().resolve(RoutingMode.ACTIVE,
+            frozen.decision(), frozen.input());
+
+        assertEquals(Optional.of("fast@low"), replayed.suggestedId(),
+            "the replay must reach the same suggestion the live turn did; a capture "
+                + "missing rawConfidence degrades instead, which is a DIFFERENT "
+                + "outcome produced by a lossy capture: " + replayed);
+    }
+
+    @Test
+    @DisplayName("the capture records the raw confidence and its semantics identifier")
+    void captureRecordsRawConfidenceAndSemantics() throws IOException {
+        // systemone.md:36 requires "optional raw provider confidence plus
+        // semantics identifier". routing.md:26 requires the probability and the
+        // provider's formula be kept SEPARATE - which is unobservable while the
+        // capture omits the identifier naming which formula produced the score.
+        var dir = root.resolve("semantics");
+        var valid = new DecisionResult.ValidChoice("q", "fast@low",
+            Map.of("fast@low", 0.9, "quality@medium", 0.1), Optional.of(0.8),
+            "provider_score");
+
+        ReplayCapture.write(dir, CANDIDATES, RoutingMode.ACTIVE,
+            input("raw_confidence", 0.65), Optional.of(valid));
+
+        String json = Files.readString(dir.resolve(ReplayCapture.FILE));
+        assertTrue(json.contains("provider_score"),
+            "the semantics identifier must travel with the score it describes: " + json);
+        // PARSED, not string-matched. Jackson's pretty printer writes doubles as
+        // 0.80000000000000004, so pinning the text would break on a harmless
+        // representation change; and merely asserting the KEY is present would pass
+        // even if the value were null - which is the defect. Parse and compare.
+        var parsed = new com.fasterxml.jackson.databind.ObjectMapper()
+            .readTree(json);
+        assertEquals(0.8, parsed.path("decision").path("rawConfidence").asDouble(), 1e-9,
+            "rawConfidence must carry the provider score, or a raw_confidence run "
+                + "cannot replay: " + json);
+        assertEquals("provider_score",
+            parsed.path("decision").path("confidenceSemantics").asText(null),
+            "the formula identifier must be captured: " + json);
+    }
+
     @Test
     @DisplayName("two captures of the same decision are byte-identical")
     void captureIsDeterministic() throws IOException {

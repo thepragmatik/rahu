@@ -1730,3 +1730,112 @@ standing down, one unverified question recorded as a question. That is the hones
 outcome of a sweep that found nothing — and worth recording precisely so a later
 reader does not assume the pass was skipped.
 
+---
+
+## AUDIT-2026-10-03-n — the fix I shipped last increment made captures lossy
+
+AUDIT-l item 1, and the most instructive entry in this register: **a correct fix
+created a new defect in the same file, and an existing comment blessed it.**
+
+### The defect
+
+AUDIT-e made `confidenceField` select the field the floor reads. `ReplayCapture`
+unaffected by that change, so it went on capturing a `ValidChoice` as:
+
+```java
+node.put("chosenLabel", choice.chosenLabel());
+node.put("probabilities", ...);
+// ... and that was all
+```
+
+It wrote neither `rawConfidence` nor `confidenceSemantics`, and `read()` rebuilt
+every decision with `Optional.empty()` and a hardcoded `"captured"`.
+
+So a run configured for `raw_confidence` produced a capture that **could not replay
+itself**: the replay rebuilt a decision with no provider score, the floor failed for
+a *different reason* than the live turn, and `ReplayOutcome` reported a degraded
+replay that looked like a policy difference. `agrees()` compares suggestions, so it
+would have reported disagreement — but for the wrong reason, on a capture that was
+supposed to be faithful.
+
+### The comment that blessed it
+
+`encodeDecision` carried this javadoc:
+
+> *"The `questionId` and confidence semantics are omitted because routing never
+> consults them, and omitting them keeps the capture minimal — every stored field
+> has a reader."*
+
+That was **true when written and false as of AUDIT-e**. Routing consults the semantics
+now, in the sense that matters: without it, a score has no formula and the capture
+cannot say which confidence it recorded. This is the AUDIT-f failure mode in a
+sentence — *every stored field has a reader* became *every stored field has a
+reader, so nothing else is needed*, and the AUDIT-e commit invalidated the premise
+without invalidating the comment.
+
+**Rule adopted: a fix that changes what a consumer reads must re-check every comment
+that justified the consumer's omissions.** A stale justification is worse than none,
+because it actively discourages the next reader from looking.
+
+### Spec basis
+
+systemone.md:36: *"optional raw provider confidence plus **semantics identifier**"* —
+the identifier is required, not optional metadata. routing.md:26 requires probability
+and provider confidence be kept separate; recording the formula is what makes that
+separation observable rather than asserted.
+
+### Mutations (all restored verbatim)
+
+| Mutation | Before | After |
+|---|---|---|
+| capture: `rawConfidence` dropped | 2 failures | 2 failures |
+| capture: `confidenceSemantics` dropped | 1 failure | 1 failure |
+| read: `rawConfidence` defaulted to 0 | **0 — survived** | 1 failure |
+| read: semantics hardcoded to `"captured"` | **0 — survived** | 1 failure |
+| capture: absent score written as 0 | **0 — survived** | 1 failure |
+
+### The three survivors shared one cause, and finding it was the actual work
+
+I nearly filed all three as equivalent mutants — the reflex after AUDIT-e, where one
+survivor turned out to be real. Three is also too many for coincidence.
+
+All three were the **same** gap: nothing asserted that **absence survives the round
+trip**. AUDIT-e's `missingNamedFieldIsRejected` proved the *live* resolver refuses an
+absent score; nothing proved the *capture* preserved the absence. Dropping the
+null-check, defaulting to 0, and writing 0 for an absent score all yield a capture
+that looks well-formed and replays a confidence the provider never gave — the
+AUDIT-j conflation, one layer into the capture.
+
+`absentRawConfidenceStaysAbsent` closes two of them by round-tripping a decision with
+no provider score and asserting: still absent on the decoded object, JSON `null` in
+the file, and the floor failing because there is no number to compare.
+
+The third survivor needed a different assertion. `read: semantics hardcoded to
+"captured"` still survived because my test only checked the capture **text** — the
+file was right and the decoded **object** was wrong, which is precisely what a round
+trip exists to detect. Added an assertion on the *reconstructed* `ValidChoice`. This
+is the AUDIT-k lesson restated: `jsonSchemaIsStableAcrossModes` compared keys and
+missed values; asserting the file missed the object.
+
+### 461 tests green (158 core / 14 openrouter / 30 systemone / 259 cli)
+
+### What I got wrong getting here
+
+- Passed `ReplayCapture.write(...)`'s return straight to `read()` → FileNotFound.
+  "Corrected" it by appending the filename again → "Not a directory". **Both were
+  wrong**: `write` returns the file, `read` takes the directory. I fixed it by
+  reading the actual signatures instead of iterating on error messages.
+- Then relaxed a JSON assertion to match on the key rather than the value, which
+  would have passed with a null value — the very defect. Replaced with a parsed
+  `readTree` comparison.
+- Left two orphaned lines from a string replacement, producing a compile error.
+
+Three failures in a row from guessing at an API I could have read. The rule is
+already in this register from AUDIT-k; I broke it three times in one increment.
+
+### Still open
+
+- `tools.resultBytes`: no site to apply it (AUDIT-l item 2), blocked on a spec decision.
+- `isTextAnswer` / `structuredOutputRequired`: future scaffolding (AUDIT-l items 3-4).
+- `/reset` turn-count retention: recorded as an unverified question in AUDIT-m.
+

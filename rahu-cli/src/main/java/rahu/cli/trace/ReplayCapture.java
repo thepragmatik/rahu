@@ -113,10 +113,15 @@ public final class ReplayCapture {
     /**
      * Encodes a decision for the capture.
      *
-     * <p>Only the fields the resolver reads are written. The {@code questionId}
-     * and confidence semantics are omitted because routing never consults them,
-     * and omitting them keeps the capture minimal — every stored field has a
-     * reader.
+     * <p>Every field the resolver reads is written, and nothing else — except
+     * confidence semantics, which IS now read: AUDIT-e made
+     * {@code confidenceField} select which field the floor compares, so a run
+     * configured for {@code raw_confidence} cannot be reconstructed from a
+     * capture holding neither the score nor the name of the formula that produced
+     * it. The replay would then degrade for a different reason than the live turn
+     * did, and report agreement about a turn that never happened.
+     *
+     * <p>{@code questionId} remains omitted: routing does not consult it.
      */
     private static JsonNode encodeDecision(DecisionResult decision) {
         if (decision == null) {
@@ -133,6 +138,12 @@ public final class ReplayCapture {
             choice.probabilities().entrySet().stream()
                 .sorted(java.util.Map.Entry.comparingByKey())
                 .forEach(e -> probabilities.put(e.getKey(), e.getValue()));
+            // The provider's own score and the identifier naming its formula
+            // (systemone.md:36). Null, not 0, when absent - a fabricated zero
+            // would be a confidence claim the provider never made (AUDIT-j).
+            node.put("rawConfidence",
+                choice.rawConfidence().isPresent() ? choice.rawConfidence().get() : null);
+            node.put("confidenceSemantics", choice.confidenceSemantics());
             return node;
         }
         if (decision instanceof DecisionResult.Failure failure) {
@@ -300,9 +311,15 @@ public final class ReplayCapture {
             java.util.Map<String, Double> probabilities = new java.util.LinkedHashMap<>();
             node.path("probabilities").fields().forEachRemaining(
                 e -> probabilities.put(e.getKey(), e.getValue().asDouble()));
+            // The provider score and its formula name are reconstructed here, not
+            // defaulted: a replay configured for `raw_confidence` needs the number
+            // the floor compared. asDouble(0) would be the AUDIT-j conflation -
+            // inventing a zero confidence for a capture that carried none.
+            java.util.Optional<Double> rawConfidence = node.hasNonNull("rawConfidence")
+                ? Optional.of(node.get("rawConfidence").asDouble()) : Optional.empty();
             return Optional.of(new DecisionResult.ValidChoice("captured",
                 node.path("chosenLabel").asText(""), probabilities,
-                Optional.empty(), "captured"));
+                rawConfidence, node.path("confidenceSemantics").asText("captured")));
         }
         if ("Failure".equals(kind)) {
             return Optional.of(new DecisionResult.Failure(
