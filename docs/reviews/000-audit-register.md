@@ -1587,3 +1587,76 @@ accepted-and-ignored field stops being a free pass for arbitrary test data.
 accepted and never read. Same shape, same treatment owed — but each needs its spec
 read first, as this one did. Registered as the next sweep rather than bundled here.
 
+---
+
+## AUDIT-2026-10-03-l — the four remaining inert keys are NOT the same shape as `confidenceField`
+
+Assessed individually rather than swept as one batch. AUDIT-e took one increment each,
+so grouping four unrelated wirings behind one commit would repeat the mistake that
+deferred AUDIT-e five times.
+
+### 1. `decision.confidenceSemantics` — **not inert, it is carried**
+
+`DecisionResult.ValidChoice.confidenceSemantics` is a *result* field, not a config
+key, and it is populated (`"none"` in the fixture helper, `"provider_score"` in the
+new tests). routing.md:26 requires "probability ... and its formula" be kept
+separate — `confidenceSemantics` is where the formula's identity belongs.
+
+It is **read nowhere**, so the separation the spec demands is currently unobservable:
+a consumer cannot tell whether a 0.9 was a probability or a provider score. Now that
+`confidenceField` can select `raw_confidence`, this matters more, not less: routing
+on a provider score without knowing its semantics is the conflation routing.md:26
+warns against, one layer up.
+
+**Fix scope:** record the semantics in `RouteResolution`/`TraceWriter` so the chosen
+confidence field and its semantics travel together into the trace. Small, and it makes
+AUDIT-e auditable after the fact.
+
+### 2. `tools.resultBytes` — **a real cap with no site to apply it**
+
+Parsed and schema-exposed; `ToolLoop` has no result-truncation call at all, so there
+is currently **no** place a byte cap would apply. This is not a wiring bug — it is an
+unimplemented feature whose config key shipped first.
+
+Wiring it means choosing semantics that do not exist yet: truncate silently (context.md
+"Never silently truncate"), return a typed error, or drop the call. Each is a spec
+decision, and none is written down.
+
+**Fix scope:** BLOCKED on a spec decision, not on code. Needs a line in context.md
+or artifacts.md saying what happens to an oversized tool result. Recorded as a
+question for the spec, not a defect I should invent a behaviour for.
+
+### 3 & 4. `OperationRequirements.isTextAnswer` / `.structuredOutputRequired` — **structurally inert, differently**
+
+These are not config keys at all: they are record components of a *trusted* input,
+constructed at exactly one site (`ActiveRouter:204-205`) with constant values `true`
+and `false`. `CandidateFactory` reads `toolsExposed()` and `contextAllowanceTokens()`;
+the other two are never consulted.
+
+routing.md's candidate-generation step 3 describes "text modality flags" as part of
+the requirements — so the record shape is per spec. The values are constant because
+alpha has one modality and no structured-output path.
+
+**Fix scope:** these are **future scaffolding**, not defects. No test can distinguish
+them because nothing varies them. Correct action is to leave them and note that when
+the first non-text modality ships they must be read — or delete them then. Removing
+them now would break the spec's stated shape for no gain.
+
+### Why this is recorded rather than fixed
+
+Three of the four need a decision that belongs to the spec, not to me:
+- what happens to an oversized tool result (none of silent-truncate/typed-error exists)
+- how confidence semantics reach a consumer
+- when a non-text modality actually arrives
+
+The AUDIT-e failure mode was inventing behaviour ("wire-contract change") and then
+deferring it five times. Naming each one's blocker is the alternative: each is now a
+one-line question instead of a standing "still open".
+
+### Nothing here is a privacy, cost or rollback gate
+
+Checked deliberately. `resultBytes` is the only one with a safety flavour, and an
+unbounded tool result is a **context** risk (context.md's bounded-feature rule), not a
+privacy or spend risk — no data leaves the machine by being long. So this is correctly
+a design question, not something to force through a gate.
+
