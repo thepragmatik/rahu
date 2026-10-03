@@ -88,7 +88,7 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | C-1 | MED | A sub-microdollar cost rounds to a settled **zero** instead of settling as uncertain. The only `double` in any cost path; it destroys the exact-decimal guarantee at the boundary where money enters. | Cost-path change; needs its own ledger proof. |
 | ~~C-2~~ | ~~MED~~ | **FIXED** (AUDIT-q) — fails closed on a typo'd, null or absent label; DEFER now only from an explicit label that passed the fit check. Was listed here while spec-mandated (`systemone.md:40`). | — |
 | C-3 | MED | `estimateTokens` silently clamps to the allowance it was passed, so one input yields different answers depending on the cap. `ContextPlan.estimatedTokens` then reports a clamped allowance as a measurement. | An estimate presented as a measurement; needs a rename or an unclamped method. |
-| — | MED | Five accepted-and-ignored fields remain: `routing.confidenceField`, `decision.confidenceSemantics`, `OperationRequirements.isTextAnswer`, `.structuredOutputRequired`. | See the sweep below. |
+| ~~row 91~~ | — | **CORRECTED (AUDIT-s)** — this row was wrong twice. It said "five" while naming four, and one of the four (`routing.confidenceField`) is the key the table's own F-11 claims is fixed. Of the remainder: `decision.confidenceSemantics` is now **refused at load** (it was never a real key); `OperationRequirements.isTextAnswer` / `.structuredOutputRequired` are still inert but are future scaffolding, not inert config — see the AUDIT-l sweep. | — |
 | G07 gap | MED | No third-party compiled extension example exists. The registry is wired and tested. | Needs an out-of-tree module built and run. |
 | A25–A32 | MED | Eight acceptance IDs rest on slice reviews rather than one test each. This is the last row blocking the M1 offline declaration. | Eight small named tests. |
 
@@ -2326,3 +2326,118 @@ that does not exist.
 - **F-7 is corrected in the register**: the row claimed `Question` is unsealed; it has been
   `sealed` since `DecisionEngine.java:116`. Stale for as long as F-9 and F-11 were, and
   found only because the whole table was re-read against source.
+
+
+---
+
+## AUDIT-2026-10-03-s — a typo one level down loaded clean
+
+I went to re-audit the Open table against source, as increment `r` did for F-7. The
+row I expected to check — "five accepted-and-ignored fields remain" — turned out to be
+**wrong about its own contents**: it said five, named four, and one of the four is the
+key the same table reports as fixed. So before fixing the register I checked what the
+loader actually accepts.
+
+### The defect
+
+`ConfigLoader.bind` validated the **root object only**, against `TOP_KEYS`:
+
+```java
+if (!TOP_KEYS.contains(name)) { unknown.add(name); }
+```
+
+and then handed each section to a `bind*` method that read the keys it knew and
+**ignored everything else**. There was no second check at any depth. Verified through
+the packaged binary — all of these loaded with exit 0 and ran a turn:
+
+```json
+"privacy": {"mode": "strict", "onUnkown": "block"}
+"trace":   {"directory": ".rahu/runs", "onFailuree": "stop"}
+"pools":   {"demo": {"modelz": [], "models": [...]}}
+```
+
+**All 14 sections accepted a misspelled key.** Not one invented name needed to be real —
+any garbage works.
+
+### Why it matters more than an ordinary typo
+
+`privacy.onUnkown` leaves `privacy.onUnknown` at its built-in default. That default
+happens to be `block`, so the run is **safe by luck rather than by configuration** — and
+the operator's file describes a system that was never configured. configuration.md
+requires this explicitly: *"reject other values and unknown privacy keys."* Nothing
+rejected them.
+
+This is the register's central pattern — *a capability that was configured but which the
+code did not implement* — in its worst form, because it does not require a real key to
+go wrong.
+
+### And the reason it survived
+
+**A15 tests exactly this, one level too high.** `ConfigLoaderTest.unknownKeyFailsWithFieldPath`
+proves `unknownTop` is refused, and a reader reasonably concludes unknown keys are
+refused. The check exists, is tested, and is green — at the only depth anyone looked.
+
+### The fix
+
+A `SECTION_KEYS` map (14 sections) plus `POOL_KEYS` and `POOL_MODEL_KEYS`, enforced by
+`rejectUnknownSectionKeys` before any binder runs. Absent optional sections are skipped
+rather than demanded, since `injection` and `search` are documented as optional and an
+absent block must stay absent.
+
+Each allowlist is the union of what its binder reads, so **adding a key to a `bind*`
+method without adding it here fails `ConfigKeyReachabilityTest`** — the two cannot drift.
+
+Verified through the shipped binary, with full paths:
+
+```
+privacy.onUnkown  → config invalid: unknown config key "privacy.onUnkown"; remove it
+                    or fix the spelling (configuration.md field table)
+pools.demo.modelz → ... "pools.demo.modelz" ...
+```
+
+### A fourth source of truth, found while checking the fourth
+
+Three places name the key set: `configuration.md`'s table, `SchemaGenerator`'s hardcoded
+schema string, and the loader. Nothing compared them. The new
+`loaderAndSchemaAgreeOnEveryKey` walks the generated schema and requires the loader to
+recognise every key it documents — so the schema can no longer offer a key the loader
+refuses. It passes, which means my allowlist and the documented schema agree.
+
+Two schema keys remain unread by any binder — `agent.maxCostUsd` and
+`session.maxCostUsd` looked like inert money guards, and I flagged them — **but both ARE
+read, via a `money(n, "maxCostUsd", ...)` helper my first extraction regex missed.** I
+checked before writing it up. Recording that because I nearly filed a false finding, and
+a grep-shaped mistake here would have been embarrassing and wrong.
+
+### 5 mutations, all caught
+
+| Mutation | Result |
+|---|---|
+| section check removed entirely | CAUGHT |
+| only the root check kept (**the original defect**) | CAUGHT |
+| `privacy` loses `onUnknown` from its allowlist | CAUGHT |
+| error message drops the section path | CAUGHT |
+| pools check removed | CAUGHT |
+
+### 493 tests green (172 core / 14 openrouter / 30 systemone / 277 cli)
+
+### Mistakes of my own, since three of them cost real time
+
+- **A brace-balance checker that counted braces inside string literals** told me
+  `withKey` never closed and that a method was missing. Both were false; my checker was
+  wrong, not the file. It cost me several cycles chasing a phantom.
+- **A `String.replace`-based test that could not fail.** The pools test "passed" a
+  pool-level typo while its model-level replacement silently did not match — an
+  unmodified config correctly loads, so the assertion was vacuous. Rewritten to mutate a
+  parsed tree, which also removed a fragile text-block-indentation dependency.
+- **A regex backtrack that hung the kernel for 300s** (catastrophic nesting on
+  `Set.of(...)` inside a method-body scan), and a **blanket string replace that mangled an
+  import** into `import JsonNode;` and briefly the package line. Four compile cycles I
+  should not have spent. I am now editing scoped to a line range or a unique anchor
+  rather than whole-file substitution.
+
+### The lesson, which generalises past this repo
+
+**A check at one level invites the assumption it applies at all levels.** A15 made the
+config loader look validated. The next question is never "is there a check?" but "at
+which depths, and is each one tested?"

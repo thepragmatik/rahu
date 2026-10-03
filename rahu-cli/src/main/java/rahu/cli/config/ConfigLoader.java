@@ -27,6 +27,50 @@ public final class ConfigLoader {
         "schemaVersion", "mode", "decision", "generation", "routing", "pools",
         "summarisation", "agent", "catalog", "tools", "trace", "context",
         "session", "orchestration", "privacy", "injection", "search");
+    /**
+     * The keys each section accepts, checked before binding.
+     *
+     * <p>AUDIT-2026-10-03-s: only the ROOT object was checked against
+     * {@link #TOP_KEYS}. Every {@code bind*} method read the keys it knew and
+     * ignored the rest, so a misspelling one level down loaded clean and the
+     * operator's file described a system that was never configured. A15 proves the
+     * root check works, which is exactly why nobody looked for the second one.
+     *
+     * <p>Each set is the union of what the binder reads, so adding a key to a
+     * {@code bind*} method without adding it here fails
+     * {@code ConfigKeyReachabilityTest}, which is the point: the two must not drift.
+     */
+    private static final Map<String, Set<String>> SECTION_KEYS = Map.ofEntries(
+        Map.entry("decision", Set.of("adapter", "baseUrl", "compatibilityProfile",
+            "model", "apiKeyEnv", "timeoutMillis", "costMode")),
+        Map.entry("generation", Set.of("adapter", "baseUrl", "apiKeyEnv",
+            "requireParameters", "allowedProviders")),
+        Map.entry("routing", Set.of("mode", "pool", "baseline", "fallback",
+            "confidenceField", "confidenceFloor", "maximumCandidates")),
+        Map.entry("agent", Set.of("maxGenerationAttempts", "deadlineSeconds",
+            "maxCostUsd", "maxCompletionTokens", "maxCompactions")),
+        Map.entry("catalog", Set.of("cacheTtlSeconds", "allowStale",
+            "maximumStaleSeconds", "offlineFixture")),
+        Map.entry("summarisation", Set.of("pool", "baseline", "fallback")),
+        Map.entry("tools", Set.of("root", "enabled", "exclusions", "maxCallsPerStep",
+            "resultBytes")),
+        Map.entry("trace", Set.of("directory", "capture", "onFailure")),
+        Map.entry("context", Set.of("instructionFiles", "maxPromptTokens",
+            "routerStateBytes")),
+        Map.entry("session", Set.of("mode", "maxTurns", "maxCostUsd")),
+        Map.entry("orchestration", Set.of("mode")),
+        Map.entry("privacy", Set.of("mode", "onUnknown", "inputClassification",
+            "sourcePolicyFile")),
+        Map.entry("search", Set.of("mode", "maxCandidates")),
+        Map.entry("injection", Set.of("mode", "threshold")));
+
+    /** Keys accepted inside one {@code pools.<name>} entry. */
+    private static final Set<String> POOL_KEYS = Set.of("models");
+
+    /** Keys accepted inside one {@code pools.<name>.models[]} entry. */
+    private static final Set<String> POOL_MODEL_KEYS =
+        Set.of("alias", "id", "reasoning", "description");
+
     private static final Set<String> ENV_FIELDS = Set.of(
         "decision.model", "generation.apiKeyEnv", "decision.apiKeyEnv");
     private static final Pattern ENV_PATTERN = Pattern.compile("\\$\\{([A-Z_][A-Z0-9_]*)}");
@@ -91,6 +135,8 @@ public final class ConfigLoader {
                 + "\"; remove it or fix the spelling (configuration.md field table)");
         }
 
+        rejectUnknownSectionKeys(root);
+
         int schemaVersion = requireInt(root, "schemaVersion");
         if (schemaVersion != 1) {
             throw new ConfigError("schemaVersion must be 1, got " + schemaVersion
@@ -139,6 +185,56 @@ public final class ConfigLoader {
         return new RahuConfig(schemaVersion, mode, decision, generation, routing, pools,
             summarisation, agent, catalog, tools, trace, context, session,
             new RahuConfig.OrchestrationConfig(orchestration), privacy, injection, search);
+    }
+
+    /**
+     * Refuses a key no binder reads, naming its full path.
+     *
+     * <p>Depth matters as much as the check: {@code privacy.onUnkown} is reported as
+     * {@code privacy.onUnkown}, never as a bare {@code onUnkown}, because an operator
+     * holding a forty-line config cannot find a typo they are not shown the location of.
+     *
+     * <p>Absent sections are skipped rather than demanded: {@code injection} and
+     * {@code search} are documented as optional, and an absent block must stay absent.
+     */
+    private void rejectUnknownSectionKeys(JsonNode root) {
+        for (var section : SECTION_KEYS.entrySet()) {
+            JsonNode node = root.get(section.getKey());
+            if (node == null || node.isNull()) {
+                continue;
+            }
+            if (!node.isObject()) {
+                throw new ConfigError(section.getKey() + " must be an object");
+            }
+            rejectUnknown(node, section.getKey(), section.getValue());
+        }
+        JsonNode pools = root.get("pools");
+        if (pools != null && pools.isObject()) {
+            for (var pool : pools.properties()) {
+                rejectUnknown(pool.getValue(), "pools." + pool.getKey(), POOL_KEYS);
+                JsonNode models = pool.getValue().path("models");
+                if (models.isArray()) {
+                    for (JsonNode model : models) {
+                        if (model.isObject()) {
+                            rejectUnknown(model,
+                                "pools." + pool.getKey() + "." + model.path("alias").asText(),
+                                POOL_MODEL_KEYS);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private static void rejectUnknown(JsonNode node, String path, Set<String> allowed) {
+        var names = node.fieldNames();
+        while (names.hasNext()) {
+            String name = names.next();
+            if (!allowed.contains(name)) {
+                throw new ConfigError("unknown config key \"" + path + "." + name
+                    + "\"; remove it or fix the spelling (configuration.md field table)");
+            }
+        }
     }
 
     private RahuConfig.DecisionConfig bindDecision(JsonNode n) {
