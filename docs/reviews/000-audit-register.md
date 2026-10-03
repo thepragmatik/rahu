@@ -2855,3 +2855,114 @@ shipped tools still work) so the positive test cannot pass for the wrong reason.
 `ToolRegistry.of`, which is what actually enforces it.
 
 516 → **528 tests green** (184 core / 21 openrouter / 36 systemone / 287 cli).
+
+
+---
+
+## AUDIT-2026-10-03-y — A31 run for real: three documentation defects, and the test that stops them recurring
+
+A31 has read "clean-checkout release verification" since the start and had **never been
+executed**. This is that run. It is the first evidence in this audit produced by using the
+product as a user would, rather than by reading its source.
+
+### Method
+
+Cloned `c2003cc` fresh into `/tmp`, built it offline on JDK 27, and ran the README
+quickstart verbatim. No source was consulted before running the commands.
+
+### What passed, unchanged
+
+`./mvnw -o clean verify` → **BUILD SUCCESS**, 528 tests, 0 failures. All four documented
+offline commands exit 0. `config validate` on `examples/offline.json` passes. `eval`
+returns 6/6 and reports `"costNote": "offline run: no provider charges; reported costs
+unavailable"` — it declines to invent a cost figure rather than printing 0 as though it
+were measured, which is what "costs reported honestly" has to mean. `eval --live` refuses
+with the G09 prerequisites named. `chat` counts turns and costs correctly (I checked
+`turns=4, remaining=3.00` against `maxTurns=20, maxCostUsd=3.00` — `remaining` is the
+cost budget, not turns, and the counter was right).
+
+### Defect 1 — the README understated the suite by 393 tests
+
+`README.md:5` claimed **"128 tests pass offline"**. The build ran 528; the sources declare
+527 test methods. The figure had been true once and was never revisited.
+
+### Defect 2 — `.env.example` declared none of the three variables the live config needs
+
+`examples/live-local-systemone.json` interpolates `RAHU_DECISION_MODEL`,
+`RAHU_FAST_MODEL` and `RAHU_QUALITY_MODEL`. `config validate` **refuses to load the config**
+while any is unset. `.env.example` declared only `OPENROUTER_API_KEY` and then stated:
+
+> `# The decision model is pinned in config.local.json ... No env var is needed for it.`
+
+So the documented live quickstart could not work on any machine: step 1 tells the operator
+to fill a file that omits all three required values, and actively tells them not to look
+for them. `.env.example` now declares all four and explains what each one is.
+
+### Defect 3 — `replay` was a required A31 surface documented nowhere
+
+`acceptance.md:37` makes "exact setup/run/chat/**replay** commands work" part of A31.
+`rahu replay` exists, is fully implemented, and appears in **no** markdown — the grep for
+`bin/rahu replay` across every `.md` returned nothing. The README quickstart now documents
+`trace inspect` and `replay`, including why replay legitimately reports `UNAVAILABLE`
+(exit 3) on an ordinary offline run.
+
+That last point needed checking rather than assuming, so I traced it:
+`captureReplayInputs` has exactly **one** production caller, `LiveTurnDriver:341`, and
+`OfflineTurnDriver` never references it. Offline mode resolves nothing, so it has no
+routing inputs to capture. The capability is wired on the path that has inputs; the
+UNAVAILABLE message names which of the two preconditions was missing. Unlike AUDIT-w,
+this is a live-only feature by design rather than dead code — but I would not have known
+that without the grep.
+
+### Why a hand-edit is not the fix
+
+All three were stale for one reason: **nothing connected the documentation to the thing it
+describes.** Correcting a number by hand fixes it until the next test is added — the same
+defect one layer up, and precisely the failure mode this audit keeps finding.
+
+`DocumentedClaimsTest` derives the claims instead:
+
+- The README's count is compared against the `@Test` declarations actually in the
+  repository, and must not understate them.
+- Every `${VAR}` interpolated by the live config must be declared by `.env.example`, and
+  `.env.example` must not assert that no variable is needed.
+
+Both are asserted against the real files, so a future drift fails the build.
+
+### The count is a floor, not an equality — and that was forced
+
+I first wrote this to compare the README against the surefire total. It cannot work, for
+three reasons I confirmed by measurement rather than argument:
+
+1. `@ParameterizedTest` runs once per input, so declarations ≠ executions.
+2. **`rahu-cli` is the LAST module in the reactor.** When a test inside it runs, roughly
+   half of its own reports do not exist yet — it counted 352, not 528. No test anywhere in
+   this reactor can observe the completed total.
+3. My first attempt read 0 reports, which looked like a permissions problem. It was my own
+   bug: `String.endsWith("TEST-*.xml")` is a **literal substring test**, and `*` is a glob
+   only to a shell. The predicate matched nothing and the count silently read zero. I only
+   found it because I checked the number instead of trusting the green run.
+
+So the floor is the enforceable invariant, and it is the one that matters: the original
+defect was an *understatement*, which is what misleads a reader. The exact 531 figure is
+recorded here from the clean-checkout run, where a real reactor has finished.
+
+### Mutation-tested, because the last three "fixes" were doc edits
+
+| mutation | result |
+|---|---|
+| README count restored to 128 | CAUGHT F=1 — "understated ... declares 527 test methods" |
+| `.env.example` re-asserts "No env var is needed" | CAUGHT F=1 — names all three vars |
+| `RAHU_FAST_MODEL` dropped from `.env.example` | CAUGHT F=1 — "interpolates [RAHU_FAST_MODEL] but does not declare" |
+| restored baseline | 3 pass |
+
+My first mutation run was **INVALID and I discarded it**: `-pl rahu-cli` without `-am`
+cannot resolve `rahu-core`'s snapshot, so all three "results" were compile failures I had
+misread as passes. Re-run with `-am`, the results above are real.
+
+Re-verified on the clean checkout after the fix: quickstart 4/4 exit 0, the two new
+documented commands behave as described, and `config validate` on the live example goes
+from a hard refusal to `config valid: mode=live, routing=shadow` once the four documented
+variables are set.
+
+528 → **531 tests green** (184 core / 21 openrouter / 36 systemone / 290 cli).
