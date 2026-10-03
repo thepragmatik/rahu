@@ -312,3 +312,58 @@ rather than hidden, because neither was visible from the unit test alone.
 
 Tests: full `clean verify` green — 154 core / 14 openrouter / 30 systemone /
 137 cli.
+
+
+## True verification — added 2026-10-03
+
+`scripts/verify-true.sh` is now the gate for claiming anything works. It exists
+because this project has three separate ways of reporting a false success, all
+of which happened here:
+
+1. **A tested guard that nothing called.** `NoProgressDetector` was implemented
+   and 5/5 green, and no `src/main` file referenced it. The tests were true. The
+   protection was absent.
+2. **A claim about the wrong artifact.** A live run was written up as "after
+   fix" when the jar had been built after that run finished.
+3. **A wrapper that reported the wrong command's exit code.** A background run
+   exited 0 because only its last command mattered, while the run inside it had
+   produced no answer.
+
+The script has 12 checks in 5 groups. The two that matter most:
+
+- **Guards are wired.** Every guard class must have a reference from `src/main`.
+  A class that only its own test names is reported as decoration.
+- **A test can actually fail.** The script edits `ToolLoop` to replace the
+  observation text handed back to the model with a constant, requires the suite
+  to go red, restores the file, and requires green again. A test that survives
+  this mutation is vacuous and must not be trusted. The mutation is applied with
+  a verified match count, because a silent no-match would skip the most
+  important check in the script — that failure mode occurred once during
+  development and was fixed.
+
+The other checks cover: no live key value in tracked files, no present-tense
+contradiction between a gate's PASS claim and a blocker claim, and a full
+`clean verify` whose log is read rather than whose exit code is trusted.
+
+Every check was itself tested by making it fail. Check 4's first version
+reported a false positive on an accurate historical sentence in the roadmap, so
+it was rewritten to match only unqualified present-tense claims.
+
+Usage: `scripts/verify-true.sh` (about 30 s), or `--quick` to skip the mutation
+and full build.
+
+## The read-then-answer path is now proven
+
+`ReadThenAnswerTest` (rahu-cli) scripts the model so the question stops being
+"is the harness able to do this" and becomes only that. The provider calls
+`workspace.read`, then must find the file's real contents in the observation the
+loop handed back, and may only answer with text copied out of it. If the loop
+drops, truncates or misassociates the observation, the test fails.
+
+3/3 green: the answer quotes the file (proving read -> observation -> answer), the
+answer names no invented path, and a refused read carries no file content and
+tells the model it was refused.
+
+This closes the harness half of the G09 gap. The hosted-model half is still
+open: no live turn has yet read a file and returned its contents. The two are
+separate questions, and this test answers only the first.
