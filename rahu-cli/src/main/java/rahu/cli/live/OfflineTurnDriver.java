@@ -116,7 +116,11 @@ public final class OfflineTurnDriver {
                 err.println("privacy blocked (" + blocked.category()
                     + "); nothing was sent. Confirm the input is free of protected data, then"
                     + " re-run with --input-classification approved-nonsensitive");
-                return 4;
+                // cli.md:42: privacy blocked shares a code with no-feasible-route
+                // and limit-reached. This matched the live driver's WRONG 4 rather
+                // than the spec - AUDIT-2026-10-03-d. Agreeing with a sibling bug is
+                // not conformance.
+                return ExitCode.PRIVACY_BLOCKED;
             }
 
             SessionState.RunHandle turn;
@@ -126,7 +130,7 @@ public final class OfflineTurnDriver {
                 // No run handle, so no run began and nothing is traced: a trace
                 // here would claim a turn that never started.
                 err.println("session limit: " + e.getMessage());
-                return 3;
+                return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
             }
 
             // The answer must not echo the input. An admitted input may still be
@@ -144,11 +148,11 @@ public final class OfflineTurnDriver {
                 // A16: a broken sink stops the turn rather than leaving a partial
                 // trace that reads as a complete one.
                 err.println("trace write failed (A16); turn stopped");
-                return 5;
+                return ExitCode.TRACE_INTEGRITY_FAILURE;
             }
         }
         err.println("eof: chat ended; history is memory-only and does not survive exit");
-        return 0;
+        return ExitCode.OK;
     }
 
     /** Adapts a {@link Scanner} over stdin to the line supplier the loop consumes. */

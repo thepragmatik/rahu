@@ -354,7 +354,12 @@ class RunTraceWiringTest {
             System.setIn(original);
         }
 
-        assertEquals(4, exit, "the privacy gate should refuse; stderr was:\n"
+        // AUDIT-2026-10-03-d: this asserted 4, matching the live driver, and both
+        // were wrong. cli.md:42 puts privacy blocked in the same class as
+        // no-feasible-route/limit. Asserting against the sibling's behaviour rather
+        // than against the spec is how two consistent bugs pass review.
+        assertEquals(rahu.cli.live.ExitCode.PRIVACY_BLOCKED, exit,
+            "the privacy gate should refuse; stderr was:\n"
             + errBuf.toString());
         // Whatever the design decides here, a refusal that leaves no record cannot
         // be distinguished from a turn that never happened. Asserted as a real

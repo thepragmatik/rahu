@@ -519,3 +519,103 @@ G06 unchanged at PARTIAL. Closed here: A16 on the offline loop is now proven, no
 just implemented. Still open, unchanged: `DemoCommand` hand-builds a hardcoded
 trace instead of using `RunTracer`; `trace.capture` and `trace.onFailure` are
 still parsed-but-unread, so `capture=full` remains silently ignored.
+
+
+---
+
+## AUDIT-2026-10-03-d — exit codes violated cli.md:42, and I had locked the bug in
+
+Found while scoping the inert `trace.capture` key. No production change was
+planned for this increment; the exit-code defect was not on my list and is the
+most consequential thing found so far.
+
+### The defect
+
+cli.md:42 fixes the vocabulary:
+
+> 0 complete answer/deterministic demo, 2 invalid input/configuration, **3 no
+> feasible route/limit reached/privacy blocked**, **4 provider/decision/tool
+> failure**, 5 trace/replay integrity failure, 130 interrupted.
+
+Three privacy-block sites returned **4**:
+
+| Site | Meaning | Was | Spec |
+|---|---|---|---|
+| `LiveTurnDriver` initial admission | privacy blocked | 4 | 3 |
+| `LiveTurnDriver` decision dispatch | privacy blocked | 4 | 3 |
+| `LiveTurnDriver` generation dispatch | privacy blocked | 4 | 3 |
+| `OfflineTurnDriver` | privacy blocked | 4 | 3 |
+
+Pre-existing, dating from the `LiveTurnDriver` extraction (2dc6fb1). My
+AUDIT-2026-10-03-b increment copied the live driver's 4 into the offline driver.
+
+### Why it matters beyond tidiness
+
+3 and 4 are different claims to a caller. 3 means "nothing was sent and retrying
+unchanged will not help" — the group cli.md deliberately puts privacy blocks,
+routing terminals and limit exhaustion into, because a supervisor's correct
+response to all three is *do not retry*. 4 means a provider, decision or tool
+failed, whose correct response is often *retry or fail over*. A privacy refusal
+reported as a provider failure invites exactly the wrong operational response, and
+in a harness that retries on provider errors it invites re-sending input that was
+refused precisely because it must not be sent.
+
+### The part I got wrong
+
+My own offline test asserted:
+
+```java
+assertEquals(4, result.exit(), "a privacy block uses exit 4, as the live driver does");
+```
+
+That message states the error precisely. I pinned the value to its **sibling
+rather than to the spec**, so the new test certified the bug instead of catching
+it. Two drivers agreeing with each other looks identical to two drivers being
+right, and I wrote the test that would make that indistinguishable forever.
+
+### The fix, and why constants rather than a patch
+
+Added `ExitCode`, one class owning the vocabulary, and routed every one of the
+14 return sites in both drivers through it. Three sites changed value; the rest
+were already correct and are now named. A bare `return 4;` is now asserted
+absent, so the next site cannot reintroduce a literal without failing a test.
+
+Constants rather than an enum because these cross the process boundary as ints
+and are compared against shell exit codes; the names carry the spec's meaning so
+a reader can check the code against cli.md:42 without leaving the file.
+
+### Why the conformance test reads source
+
+`ExitCodeConformanceTest` inspects the drivers' source rather than driving them.
+That is normally the weaker technique, and it is here deliberately: proving exit 4
+*is* provider failure and exit 3 *is* privacy blocked by execution needs six
+distinct failure modes, two of which (provider outage, routing terminal) cannot
+be provoked offline at all. That unreachable-by-test shape is precisely how the
+original gap survived. The test also fails loudly if the block count drops to
+zero, so a refactor cannot make it pass vacuously.
+
+### Proof it has power
+
+Reintroducing the original defect in each driver separately:
+
+| Mutation | Result |
+|---|---|
+| baseline | 17 tests, 0 failures |
+| live driver: privacy → provider code | **2 failures** |
+| offline driver: privacy → provider code | **3 failures** |
+
+Packaged binary: `privacy blocked -> exit 3`, `admitted -> exit 0`.
+
+### Not fixed here, recorded so it is not lost
+
+`trace.capture` and `trace.onFailure` are still parsed-but-unread, and this
+increment found a THIRD inert-thing in the same area: **`ReplayEngine` is dead
+code**. Nothing in `src/main` references it or `ReplayOutcome`; there is no
+`replay` command, though cli.md:14 documents `rahu replay RUN_PATH`. So the
+replay half of G06 is not wired, not merely mis-wired, and observability.md's
+"if payloads are absent, report replay unavailable" has no reachable surface.
+`capture: payloads` has no writer, so no run can ever produce a replayable trace.
+
+That is a larger piece of work than an exit-code fix and is the next increment.
+Recorded here because I found it while scoping, and it would have been easy to
+mention `capture` in a commit message and leave the actual gap unstated.

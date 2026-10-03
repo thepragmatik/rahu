@@ -126,7 +126,12 @@ class OfflineTraceWiringTest {
         var dir = Files.createDirectories(root.resolve("t1"));
         var result = drive(dir, "unknown", PII_INPUT);
 
-        assertEquals(4, result.exit(), "a privacy block uses exit 4, as the live driver does");
+        // AUDIT-2026-10-03-d: my own message here said "as the live driver does",
+        // which is exactly the error - conformance is to cli.md:42, not to whichever
+        // sibling got there first. Privacy blocked is 3, grouped with
+        // no-feasible-route/limit because nothing was sent and a retry will not help.
+        assertEquals(rahu.cli.live.ExitCode.PRIVACY_BLOCKED, result.exit(),
+            "cli.md:42: privacy blocked shares a code with no-feasible-route/limit");
         // The defect: this string contained both the email and the card number.
         assertFalse(result.out().contains("bob@example.com"),
             "the refused input must not reach stdout");
@@ -272,12 +277,11 @@ class OfflineTraceWiringTest {
         // The dangerous direction. recordRefusal swallows the sink failure and
         // returns false, so this is the one place where an I/O error could
         // plausibly be mistaken for "nothing to record, carry on". The refusal
-        // must survive the failure: exit 4 and no content, exactly as with a
-        // healthy sink. A privacy decision must not depend on whether tracing
-        // worked.
+        // must survive the failure: the same code and no content as with a healthy
+        // sink. A privacy decision must not depend on whether tracing worked.
         var result = drive(brokenSink(), "unknown", PII_INPUT);
 
-        assertEquals(4, result.exit(),
+        assertEquals(rahu.cli.live.ExitCode.PRIVACY_BLOCKED, result.exit(),
             "the input stays blocked even when the refusal cannot be traced: " + result.err());
         assertTrue(result.err().contains("privacy blocked"),
             "the refusal is still reported: " + result.err());

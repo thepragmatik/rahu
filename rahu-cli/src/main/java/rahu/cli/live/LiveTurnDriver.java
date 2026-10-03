@@ -110,7 +110,7 @@ public final class LiveTurnDriver {
         }
 
         err.println("eof: chat ended; history is memory-only and does not survive exit");
-        return 0;
+        return ExitCode.OK;
     }
 
     /** Prompt only on a real terminal; piped input keeps stderr clean. */
@@ -166,7 +166,11 @@ public final class LiveTurnDriver {
             err.println("privacy blocked (" + blocked.category()
                 + "); nothing was sent. Confirm the input is free of protected data, then"
                 + " re-run with --input-classification approved-nonsensitive");
-            return 4;
+            // cli.md:42 puts privacy blocked in the same class as
+            // no-feasible-route/limit: nothing was sent, and retrying unchanged will
+            // not help. This returned 4 (provider/decision/tool failure), which is a
+            // different claim - AUDIT-2026-10-03-d.
+            return ExitCode.PRIVACY_BLOCKED;
         }
 
         SessionState.RunHandle turn;
@@ -176,7 +180,7 @@ public final class LiveTurnDriver {
             // Before the run handle exists there is no run to trace, so nothing is
             // written: this turn never began.
             err.println("session limit: " + e.getMessage());
-            return 3;
+            return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
         }
 
         // G06 wiring (AUDIT-2026-10-03-a). This tracer is the only thing between
@@ -198,7 +202,7 @@ public final class LiveTurnDriver {
                     err.println("privacy blocked at decision dispatch (" + blocked.category()
                         + "); nothing was sent");
                     terminal = "PRIVACY_BLOCKED";
-                    return 4;
+                    return ExitCode.PRIVACY_BLOCKED;
                 }
 
                 // 2a. Deterministic prompt assembly and context pressure (the
@@ -232,7 +236,7 @@ public final class LiveTurnDriver {
                     err.println("routing terminal: " + routing.resolution().terminalReason().get()
                         + " — nothing was sent");
                     terminal = routing.resolution().terminalReason().get().name();
-                    return 3;
+                    return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
                 }
 
                 // 2b. Batched profile decision (classification + per-tool relevance) in
@@ -278,7 +282,7 @@ public final class LiveTurnDriver {
                     err.println("privacy blocked at generation dispatch (" + blocked.category()
                         + "); nothing was sent");
                     terminal = "PRIVACY_BLOCKED";
-                    return 4;
+                    return ExitCode.PRIVACY_BLOCKED;
                 }
 
                 turn.recordUser(ChatMessage.user(line));
@@ -297,7 +301,7 @@ public final class LiveTurnDriver {
                         + " (committed=" + session.ledger().settled().amount() + " "
                         + perRunCap + " per-run cap, "
                         + cfg.session().maxCostUsd() + " session allowance)");
-                    return 3;
+                    return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
                 }
 
                 // The advisory relevance judgment is only advisory if it narrows what the
@@ -334,7 +338,7 @@ public final class LiveTurnDriver {
                     err.println("generation failed: " + failed.kind() + " — " + failed.safeReason()
                         + " (ledger settled=" + session.ledger().settled().amount()
                         + " uncertain=" + session.ledger().uncertain().amount() + ")");
-                    return 4;
+                    return ExitCode.PROVIDER_DECISION_OR_TOOL_FAILURE;
                 }
 
                 ModelOutcome.Completed done = (ModelOutcome.Completed) outcome;
@@ -356,12 +360,12 @@ public final class LiveTurnDriver {
             // record claiming the run finished; a partial trace must never be
             // readable as a complete one.
             err.println("trace write failed; run stopped without a terminal record (A16)");
-            return 5;
+            return ExitCode.TRACE_INTEGRITY_FAILURE;
         } finally {
             trace.runTerminated(terminal, generationSteps);
             trace.close();
         }
-        return 0;
+        return ExitCode.OK;
     }
 
     /**
