@@ -87,7 +87,7 @@ Each is real and confirmed. None is a quick fix; each needs its own proof.
 | ~~F-11~~ | ~~HIGH~~ | **FIXED** (AUDIT-e) — `RouteResolver` reads it via `confidenceOf(c, in.confidenceField())`. Was listed here while already fixed. | — |
 | ~~C-1~~ | — | **FIXED** (AUDIT-u) — see below. The *rounds to a settled zero* half was right. The *"destroys the exact-decimal guarantee"* rationale in this row and in review 017 was **wrong** and is retracted: `asDouble()` then `Math.round` agreed with exact decimal on 400k sampled inputs. | — |
 | ~~C-2~~ | ~~MED~~ | **FIXED** (AUDIT-q) — fails closed on a typo'd, null or absent label; DEFER now only from an explicit label that passed the fit check. Was listed here while spec-mandated (`systemone.md:40`). | — |
-| C-3 | MED | `estimateTokens` silently clamps to the allowance it was passed, so one input yields different answers depending on the cap. `ContextPlan.estimatedTokens` then reports a clamped allowance as a measurement. | An estimate presented as a measurement; needs a rename or an unclamped method. |
+| ~~C-3~~ | — | **FIXED** (`9bb0078`, AUDIT-2026-10-03-r) — the estimate is now an unclamped measurement; the bound is applied at each port that requires one. Row left struck rather than deleted so the audit trail stays. | — |
 | ~~row 91~~ | — | **CORRECTED (AUDIT-s)** — this row was wrong twice. It said "five" while naming four, and one of the four (`routing.confidenceField`) is the key the table's own F-11 claims is fixed. Of the remainder: `decision.confidenceSemantics` is now **refused at load** (it was never a real key); `OperationRequirements.isTextAnswer` / `.structuredOutputRequired` are still inert but are future scaffolding, not inert config — see the AUDIT-l sweep. | — |
 | G07 gap | MED | No third-party compiled extension example exists. The registry is wired and tested. | Needs an out-of-tree module built and run. |
 | A25–A32 | MED | Eight acceptance IDs rest on slice reviews rather than one test each. This is the last row blocking the M1 offline declaration. | Eight small named tests. |
@@ -2635,3 +2635,55 @@ import; the real cause was that two of my five edits had never applied. Assertin
 each edit landed, before compiling, is what exposed it.
 
 512 tests green (172 core / 21 openrouter / 36 systemone / 283 cli)
+
+
+---
+
+## AUDIT-2026-10-03-v — C-3 re-verified, and my own task state was wrong about it
+
+I picked C-3 as the next increment from my task-progress record, which listed it as
+**open**. It was fixed six commits ago in `9bb0078` (AUDIT-2026-10-03-r). The register
+row was still unstruck, and I had carried the stale "open" status forward instead of
+re-reading the code. **The lesson is about my bookkeeping, not the code**: the fix was
+there, and I nearly spent the increment assuming otherwise.
+
+Rather than declare victory off the commit message and the doc comment — both of which
+assert the fix works — I re-verified the whole clamp chain:
+
+| site | clamp | mutation | result |
+|---|---|---|---|
+| `PromptAssembler.estimateTokens` | none, by design | re-clamp to allowance, plus `CompactionPlanner` re-passing `Integer.MAX_VALUE` (the ORIGINAL defect, restored in full) | **CAUGHT (F=1 of 8)** |
+| `ContextPlan.boundedPressure()` | `Math.min(1.0, pressure())` | stop saturating | **CAUGHT (F=2)** |
+| `CompactionPolicyDecider.consult` | inline `Math.min(1.0, Math.max(0.0, …))` | clamp removed | **CAUGHT (F=4 E=2)** |
+| `LiveTurnDriver` → `ProfileDecider` | `plan.boundedPressure()` | hand it the raw `plan.pressure()` | **CAUGHT (F=2)** |
+
+So the measurement is unclamped, and every port that requires a bound has one. The two
+ports clamp by *different* mechanisms — a named method and an inline expression — and
+both are individually mutation-covered, which is the part a "the fix is in" reading would
+have missed.
+
+### The interesting gap: `ProfileDecider` has no clamp of its own
+
+It passes `contextPressure` straight into `DecisionEngine.State`, which **rejects**
+anything outside `[0,1]`. That is safe only because the driver hands it
+`boundedPressure()`. Nothing inside `ProfileDecider` protects itself, and the driver
+wraps the profile consult in a catch-all `RuntimeException`, so the failure mode is not
+a crash — it is `"profile: unavailable"` printed to stderr and the profile decision
+silently disabled **on precisely the over-budget turns where context pressure is the
+signal**. `CompactionTriggerWiringTest` already pins that the line does not appear; that
+test is the only reason this is covered at all.
+
+### Two invalid experiments, caught by the harness labels
+
+Both of my first mutation attempts **did not compile**, and were labelled
+`INVALID-EXPERIMENT` rather than counted:
+
+- re-adding a clamp to the estimator, because the method no longer takes an allowance;
+- a mutation anchored on `boundedPressure()` inside `ProfileDecider`, which never
+  contained that string — I had assumed the decider clamped, and it does not.
+
+And one **false "pass"**: running Maven with `-q` returned `NO-SUMMARY` for the restored
+tree, which I could have reported as green. Without `-q` it is `SURVIVED (27 tests ran)`.
+`NO-SUMMARY` is not a pass; a run that proves nothing must be reported as proving nothing.
+
+512 tests green.
