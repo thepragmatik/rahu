@@ -907,3 +907,117 @@ events, `capture=false`, and the `RunTerminated` reason; JSON form matches.
   contract than the live path does.
 - `trace.onFailure` remains parsed-but-unread.
 - `confidenceField` remains an inert config key (AUDIT-e).
+
+
+---
+
+## AUDIT-2026-10-03-g — `rahu run`, the last missing command
+
+Follow-on to (f). `rahu run` (cli.md:11) was the final gap in the command table, so
+**G06 could not honestly be marked PASSED** until it existed. This increment implements
+it, and the four defects below were all found by verification rather than by reading.
+
+### Two things deliberately NOT duplicated
+
+Copying either would have reproduced a shape this repo has already paid for twice — two
+integrity predicates (AUDIT-f), two capture integrities (AUDIT-e) — where the copies
+drift and the drift is invisible because both are exercised by the same suite.
+
+**`LiveAssembly`** holds the 60-line live wiring that lived in `ChatCommand.runLive`:
+provider, decision engine, evidence-gated router, session, path boundary, narrowed tool
+registry, tool loop. `run` and `chat` now build from it. This is where drift is most
+dangerous: a tool left enabled in one command and disabled in the other is a **privacy
+difference, not a refactor**. `ChatCommand` delegates `workspaceRegistry` and
+`provenance` to it too, so "what `unknown` means" cannot differ between the commands —
+verified, not assumed: `rahu chat` and `rahu run` both exit 3 with
+`unknown-provenance` on the same unclassified input.
+
+**`TurnOutcome`** replaces `oneTurn`'s bare `int`. cli.md:15 requires `run --format json`
+to emit "one final structured result"; building that by scraping the human stderr trail
+would make the machine surface a function of phrasing — the reason the trace writer is
+not reconstructed from log lines. `LiveTurnDriver.turn()` is the SAME body `chat`
+already ran; `oneTurn` is now a thin wrapper. A second implementation of the turn would
+be free to disagree about which candidate ran.
+
+`RepoFile` was extracted for the same reason in test code: it existed as a private copy
+in two test classes already, and a copy resolving the wrong root fails as "fixture
+missing" — a misleading error for whoever reads the failure next.
+
+### The four defects
+
+**1. `--prompt /status` exited 0 silently, answering nothing.** `run` passed
+`line -> null` to mean "no commands", but a *non-null* handler still entered the
+driver's slash branch, and the null-means-continue path then `continue`d **past the
+turn**. Result: exit 0, empty stdout, no trace — indistinguishable from a run that never
+happened, and invisible because exit 0 reads as success. Fixed with an explicit
+`slashCommandsEnabled` flag rather than a null check: a null handler is a value a caller
+can supply by accident, and the accident is silent. Same guard applied to
+`LiveTurnDriver`, where the identical latent bug was waiting.
+
+**2. The offline path wrote no trace at all.** The first implementation inlined the
+offline answer; `chat` offline wrote RunStarted + RunTerminated while `run` wrote
+**nothing**. That is the AUDIT-a shape exactly — a path that answers without leaving
+evidence. Fixed by driving `OfflineTurnDriver` with a single in-memory line, which makes
+the privacy gate, the trace and the fixed answer impossible to omit because they live in
+the one place both commands share.
+
+**3. JSON mode emitted the answer twice.** Offline mode printed the fixed answer to
+stdout *and* then the JSON document. A filter cannot un-print a stream, so suppression
+happens where the print happens (`printAnswer`), in both drivers.
+
+**4. `runId` was invented rather than reported.** The offline JSON reported
+`"runId": null` while a trace *was* on disk. The id now comes from the driver that
+wrote it, and the packaged run is verified to resolve to a real directory:
+`trace inspect` on the exact reported id returns `COMPLETE`.
+
+### A test that overstated its own coverage
+
+The first `RunCommandTest` asserted `--routing` and `--capture-payloads` were
+*accepted*, which passes even when a flag is parsed and discarded — the same defect shape
+as inert `confidenceField`. The mutation battery proved it: both mutations produced **0
+failures**. Fixed by making `applyOverrides` static and asserting its *effect* on the
+effective config, plus that the override reaches the router. Both now caught.
+
+Similarly, `TurnOutcomeTest` was added only after the battery showed the driver printing
+the answer in JSON mode was **uncaught** — because no test drove a real turn.
+
+### Offline and live JSON expose the same KEYS
+
+A schema that changes shape with the mode is a schema no consumer can rely on:
+automation would need two parsers and would discover the difference as a KeyError in
+someone else's pipeline. Values differ honestly (offline has no route, no cost, no
+model call); the keys do not. `jsonSchemaIsStableAcrossModes` pins it.
+
+### Proof
+
+Mutation battery (54 tests baseline), all caught:
+
+| Mutation | Failures |
+|---|---|
+| `run` unregistered on `Main` | 16 + 1 error |
+| provenance always unknown (privacy) | 11 |
+| JSON answer not suppressed (offline) | 3 |
+| offline `run` writes no trace | 2 |
+| routing override ignored | 2 |
+| `tools.enabled` ignored (F-4 regression) | 2 |
+| unobserved cost shown as observed (A10) | 2 |
+| slash-as-command (silent exit 0) | 1 |
+| `runId` never reported | 1 |
+| answer printed in live JSON mode | 1 |
+| capture override ignored | 1 |
+
+Packaged binary: all **twelve** documented commands answer `--help`; `--prompt /status`
+is answered as task text; stdout is exactly one line; JSON is one parseable document
+whose `runId` resolves to a real trace directory; `trace inspect` reads it and reports
+`COMPLETE`; `replay` reports UNAVAILABLE for a metadata-capture run rather than
+reconstructing anything. Privacy block exits 3 with zero content leakage on either
+stream. 427 tests green.
+
+### Still open (unchanged, and now smaller)
+
+- **The offline path records no `RouteResolved`** — confirmed here, and it is *correct*:
+  offline mode routes nothing, so there is no routing outcome to record. A `run`/`chat`
+  offline trace is a truthful two-event record, not a degraded one.
+- `trace.onFailure` remains parsed-but-unread.
+- `confidenceField` remains an inert config key (AUDIT-e).
+- `DemoCommand` still hand-builds its trace.

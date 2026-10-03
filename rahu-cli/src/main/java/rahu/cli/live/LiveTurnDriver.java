@@ -55,6 +55,12 @@ public final class LiveTurnDriver {
     private final Provenance provenance;
     private final ToolLoop toolLoop;
     private final Function<String, Integer> slashHandler;
+
+    /**
+     * When false, no input is treated as a slash command. See the same field on
+     * {@link OfflineTurnDriver} for why a null handler is not a safe "no commands".
+     */
+    private final boolean slashCommandsEnabled;
     private final PrintWriter out;
     private final PrintWriter err;
 
@@ -72,6 +78,7 @@ public final class LiveTurnDriver {
         this.provenance = provenance;
         this.toolLoop = toolLoop;
         this.slashHandler = slashHandler;
+        this.slashCommandsEnabled = slashHandler != null;
         this.out = out;
         this.err = err;
     }
@@ -95,7 +102,10 @@ public final class LiveTurnDriver {
             if (line == null || line.isBlank()) {
                 continue;
             }
-            if (line.startsWith("/")) {
+            // A slash line is a COMMAND only when a handler was supplied; `run` builds
+            // its driver without one (cli.md:27), so `/status` must be the task TEXT.
+            // See the same guard in OfflineTurnDriver.
+            if (slashCommandsEnabled && line.startsWith("/")) {
                 Integer code = slashHandler.apply(line.strip());
                 if (code != null) {
                     return code;
@@ -167,6 +177,61 @@ public final class LiveTurnDriver {
      */
     private int oneTurn(String line, PrivacyGate gate, PromptAssembler assembler,
         int allowance, int maxTokens, BigDecimal perRunCap) {
+        return turn(line, gate, assembler, allowance, maxTokens, perRunCap).exitCode();
+    }
+
+    /**
+     * Builds the outcome for one exit path.
+     *
+     * <p>A single builder rather than eight inline literals: an inline
+     * {@code new TurnOutcome(...)} at each return site is exactly how one of them ends
+     * up reporting a route the turn did not take, and nothing would fail.
+     */
+    private TurnOutcome outcome(int exitCode, String terminalReason, String answer,
+        rahu.core.model.Usage usage, TurnOutcome.RouteInfo route, String runId, int steps,
+        long elapsedMs) {
+        return new TurnOutcome(exitCode, terminalReason,
+            Optional.<String>ofNullable(answer),
+            Optional.<String>ofNullable(runId),
+            Optional.<TurnOutcome.RouteInfo>ofNullable(route),
+            Optional.<Usage>ofNullable(usage), steps, elapsedMs);
+    }
+
+    /**
+     * One turn, with its result as data.
+     *
+     * <p>The body is unchanged from the {@code int}-returning form (AUDIT-2026-10-03-g):
+     * {@code rahu run --format json} needs the routing, answer, usage and terminal
+     * reason, and a second implementation of the turn would be free to disagree with
+     * {@code chat} about which candidate ran - the exact drift {@link LiveAssembly}
+     * and {@code RunLocator} were extracted to prevent.
+     */
+    public TurnOutcome turn(String line, PrivacyGate gate, PromptAssembler assembler,
+        int allowance, int maxTokens, BigDecimal perRunCap) {
+        return turn(line, gate, assembler, allowance, maxTokens, perRunCap, true);
+    }
+
+    /**
+     * One turn that does NOT print the answer to stdout.
+     *
+     * <p>cli.md:13 requires {@code run --format json} to emit "one final structured
+     * result to stdout" and never mix progress lines there. The answer is suppressed at
+     * the SOURCE rather than printed and filtered, because a filter cannot un-print it:
+     * once {@code out.println(answer)} has run, stdout is already corrupt for automation.
+     * The answer is still returned in the outcome, so the JSON document can carry it.
+     */
+    public TurnOutcome turnSuppressingAnswer(String line, PrivacyGate gate,
+        PromptAssembler assembler, int allowance, int maxTokens, BigDecimal perRunCap) {
+        return turn(line, gate, assembler, allowance, maxTokens, perRunCap, false);
+    }
+
+    private TurnOutcome turn(String line, PrivacyGate gate, PromptAssembler assembler,
+        int allowance, int maxTokens, BigDecimal perRunCap, boolean printAnswer) {
+        String answerText = null;
+        rahu.core.model.Usage turnUsage = null;
+        TurnOutcome.RouteInfo routeInfo = null;
+        String runIdText = null;
+        long elapsedOut = 0;
         // 1. Initial admission: provenance + protected-content scan, before any
         //    classification, reservation or transport.
         var view = SafeView.of("turn-" + session.turnCount(), provenance, line);
@@ -184,7 +249,8 @@ public final class LiveTurnDriver {
             // no-feasible-route/limit: nothing was sent, and retrying unchanged will
             // not help. This returned 4 (provider/decision/tool failure), which is a
             // different claim - AUDIT-2026-10-03-d.
-            return ExitCode.PRIVACY_BLOCKED;
+            return outcome(ExitCode.PRIVACY_BLOCKED, "PRIVACY_BLOCKED", null, null, null,
+                null, 0, 0);
         }
 
         SessionState.RunHandle turn;
@@ -194,7 +260,8 @@ public final class LiveTurnDriver {
             // Before the run handle exists there is no run to trace, so nothing is
             // written: this turn never began.
             err.println("session limit: " + e.getMessage());
-            return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
+            return outcome(ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY, "SESSION_LIMIT_REACHED",
+                null, null, null, null, 0, 0);
         }
 
         // G06 wiring (AUDIT-2026-10-03-a). This tracer is the only thing between
@@ -203,6 +270,7 @@ public final class LiveTurnDriver {
         // code never called it. Every event below carries a value the driver holds.
         // RunStarted is emitted by TurnTrace.begin so the offline loop writes the
         // same opening event from the same code.
+        runIdText = turn.runId();
         var trace = trace().begin(turn.runId(), session.turnCount());
         int generationSteps = 0;
         String terminal = "ANSWER_COMPLETE";
@@ -216,7 +284,8 @@ public final class LiveTurnDriver {
                     err.println("privacy blocked at decision dispatch (" + blocked.category()
                         + "); nothing was sent");
                     terminal = "PRIVACY_BLOCKED";
-                    return ExitCode.PRIVACY_BLOCKED;
+                    return outcome(ExitCode.PRIVACY_BLOCKED, terminal, null, null, routeInfo,
+                        runIdText, generationSteps, elapsedOut);
                 }
 
                 // 2a. Deterministic prompt assembly and context pressure (the
@@ -239,6 +308,13 @@ public final class LiveTurnDriver {
                 // RouteResolved is recorded even for a terminal routing: "we resolved, and the
                 // resolution forbade execution" is itself the evidence, and skipping it would
                 // make a refused turn indistinguishable from one that never routed.
+                routeInfo = new TurnOutcome.RouteInfo(
+                    routing.resolution().suggestedId().orElse(null),
+                    routing.resolution().executedId().orElse(null),
+                    routing.resolution().mode().name(),
+                    routing.resolution().degraded(),
+                    routing.resolution().fallbackCause().orElse(null),
+                    routing.resolution().exclusions().size());
                 trace.routeResolved(
                     routing.resolution().suggestedId().orElse(null),
                     routing.resolution().executedId().orElse(null),
@@ -270,7 +346,8 @@ public final class LiveTurnDriver {
                     err.println("routing terminal: " + routing.resolution().terminalReason().get()
                         + " — nothing was sent");
                     terminal = routing.resolution().terminalReason().get().name();
-                    return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
+                    return outcome(ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY, terminal, null, null,
+                        routeInfo, runIdText, generationSteps, elapsedOut);
                 }
 
                 // 2b. Batched profile decision (classification + per-tool relevance) in
@@ -316,7 +393,8 @@ public final class LiveTurnDriver {
                     err.println("privacy blocked at generation dispatch (" + blocked.category()
                         + "); nothing was sent");
                     terminal = "PRIVACY_BLOCKED";
-                    return ExitCode.PRIVACY_BLOCKED;
+                    return outcome(ExitCode.PRIVACY_BLOCKED, terminal, null, null, routeInfo,
+                        runIdText, generationSteps, elapsedOut);
                 }
 
                 turn.recordUser(ChatMessage.user(line));
@@ -335,7 +413,8 @@ public final class LiveTurnDriver {
                         + " (committed=" + session.ledger().settled().amount() + " "
                         + perRunCap + " per-run cap, "
                         + cfg.session().maxCostUsd() + " session allowance)");
-                    return ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY;
+                    return outcome(ExitCode.NO_ROUTE_OR_LIMIT_OR_PRIVACY, terminal, null, null,
+                        routeInfo, runIdText, generationSteps, elapsedOut);
                 }
 
                 // The advisory relevance judgment is only advisory if it narrows what the
@@ -372,11 +451,17 @@ public final class LiveTurnDriver {
                     err.println("generation failed: " + failed.kind() + " — " + failed.safeReason()
                         + " (ledger settled=" + session.ledger().settled().amount()
                         + " uncertain=" + session.ledger().uncertain().amount() + ")");
-                    return ExitCode.PROVIDER_DECISION_OR_TOOL_FAILURE;
+                    return outcome(ExitCode.PROVIDER_DECISION_OR_TOOL_FAILURE, terminal, null,
+                        failed.usage(), routeInfo, runIdText, generationSteps, elapsedOut);
                 }
 
                 ModelOutcome.Completed done = (ModelOutcome.Completed) outcome;
-                out.println(done.answer());
+                elapsedOut = elapsedMs;
+                turnUsage = done.usage();
+                answerText = done.answer();
+                if (printAnswer) {
+                    out.println(done.answer());
+                }
                 turn.recordAssistant(ChatMessage.assistant(done.answer()));
                 account(session, done.usage(), reservation.get());
                 trace.modelCompleted(candidate.model().providerNeutralId(),
@@ -394,12 +479,14 @@ public final class LiveTurnDriver {
             // record claiming the run finished; a partial trace must never be
             // readable as a complete one.
             err.println("trace write failed; run stopped without a terminal record (A16)");
-            return ExitCode.TRACE_INTEGRITY_FAILURE;
+            return outcome(ExitCode.TRACE_INTEGRITY_FAILURE, "TRACE_INTEGRITY_FAILURE", null,
+                turnUsage, routeInfo, runIdText, generationSteps, elapsedOut);
         } finally {
             trace.runTerminated(terminal, generationSteps);
             trace.close();
         }
-        return ExitCode.OK;
+        return outcome(ExitCode.OK, terminal, answerText, turnUsage, routeInfo, runIdText,
+            generationSteps, elapsedOut);
     }
 
     /**

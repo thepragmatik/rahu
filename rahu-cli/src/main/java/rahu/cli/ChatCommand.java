@@ -88,12 +88,7 @@ public final class ChatCommand implements Callable<Integer> {
      */
     static rahu.core.tools.ToolRegistry workspaceRegistry(RahuConfig cfg,
         rahu.core.tools.PathBoundary boundary) {
-        var all = rahu.core.tools.ToolRegistry.withWorkspace(boundary);
-        var enabled = cfg.tools().enabled();
-        if (enabled == null || enabled.isEmpty()) {
-            return all;
-        }
-        return all.restrictedTo(new java.util.LinkedHashSet<>(enabled));
+        return rahu.cli.live.LiveAssembly.workspaceRegistry(cfg, boundary);
     }
 
     // ------------------------------------------------------------------- live
@@ -102,65 +97,25 @@ public final class ChatCommand implements Callable<Integer> {
         var err = spec.commandLine().getErr();
         var out = spec.commandLine().getOut();
 
-        ModelProvider provider;
-        DecisionEngine decision;
-        try {
-            provider = LiveWiring.generation(cfg);
-            decision = LiveWiring.decision(cfg);
-        } catch (RuntimeException e) {
-            err.println("live wiring failed: " + e.getMessage());
+        // AUDIT-2026-10-03-g: the assembly moved to LiveAssembly so `rahu run` and
+        // `rahu chat` cannot drift apart. A tool left enabled in one command and
+        // disabled in the other is a privacy difference, not a refactor.
+        var built = rahu.cli.live.LiveAssembly.build(cfg, provenance(cfg), "live",
+            new rahu.cli.live.LiveAssembly.PrintWriters(out, err));
+        if (built instanceof rahu.cli.live.LiveAssembly.Result.Failure failure) {
+            err.println(failure.refusal().operation() + " failed: "
+                + failure.refusal().message());
             return 2;
         }
-        if (!LiveWiring.keySupplier(cfg.generation().apiKeyEnv()).get().isPresent()) {
-            err.println("generation credential " + cfg.generation().apiKeyEnv()
-                + " is not set; export it or put it in .env (gitignored)");
-            return 2;
-        }
+        var stack = ((rahu.cli.live.LiveAssembly.Result.Built) built).assembly();
 
-        // Paid admission is evidence-gated: the pool is reduced to candidates the
-        // catalog can prove, and an inadmissible baseline or fallback refuses here
-        // rather than degrading every turn later.
-        rahu.cli.live.ActiveRouter router;
-        try {
-            router = new rahu.cli.live.ActiveRouter(cfg,
-                rahu.cli.live.ProfileEvidence.load(cfg,
-                    java.nio.file.Path.of("docs/generated/model-profiles.json")));
-        } catch (IOException e) {
-            err.println("profile evidence unavailable: " + e.getMessage()
-                + " — run `rahu config validate --live-check` to fetch it");
-            return 2;
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            err.println("profile evidence lookup interrupted");
-            return 2;
-        } catch (IllegalStateException e) {
-            err.println("routing refused: " + e.getMessage());
-            return 2;
-        }
+        err.println("rahu chat (live) — routing " + stack.routerMode()
+            + ", candidates " + stack.router().candidates().candidates().size()
+            + ", decision " + cfg.decision().model()
+            + " — /status /reset /exit");
 
-        var session = newSession(cfg, "live");
-
-        var boundary = new rahu.core.tools.PathBoundary(
-            java.nio.file.Path.of(cfg.tools().root()), cfg.tools().exclusions());
-        var registry = workspaceRegistry(cfg, boundary);
-        var loop = new rahu.cli.live.ToolLoop(registry, boundary, provider,
-            new rahu.core.tools.ToolCallLog(), new rahu.core.privacy.PrivacyGate(),
-            provenance(cfg),
-            cfg.tools().maxCallsPerStep() == null ? 8 : cfg.tools().maxCallsPerStep(),
-            new rahu.cli.live.InjectionGate(decision, injectionMode(cfg.injection()),
-                cfg.injection().thresholdOrDefault()),
-            new rahu.cli.live.SearchReranker(decision, rerankMode(cfg.search()),
-                cfg.search().maxCandidatesOrDefault()));
-
-        err.println("rahu chat (live) — rerank " + rerankMode(cfg.search())
-            + " — injection " + injectionMode(cfg.injection())
-            + " — routing " + router.mode()
-            + ", pool " + cfg.routing().pool() + ", candidates "
-            + router.candidates().candidates().size() + ", decision "
-            + cfg.decision().model() + " — /status /reset /exit");
-
-        return new LiveTurnDriver(cfg, provider, decision, router, session,
-            provenance(cfg), loop, line -> handleSlash(line, session), out, err).run();
+        return stack.driver(new rahu.cli.live.LiveAssembly.PrintWriters(out, err),
+            line -> handleSlash(line, stack.session())).run();
     }
 
     // ---------------------------------------------------------------- helpers
@@ -201,11 +156,7 @@ public final class ChatCommand implements Callable<Integer> {
 
     /** Operator-recorded input provenance; anything but an explicit assessment fails closed. */
     private Provenance provenance(RahuConfig cfg) {
-        String classification = inputClassification != null
-            ? inputClassification : cfg.privacy().inputClassification();
-        return "approved-nonsensitive".equals(classification)
-            ? new Provenance.ApprovedNonSensitive("operator-classification")
-            : Provenance.Unknown.INSTANCE;
+        return rahu.cli.live.LiveAssembly.provenance(cfg, inputClassification);
     }
 
     /** Baseline alias ("nemo@default") resolves to a pool entry; first entry is the fallback. */

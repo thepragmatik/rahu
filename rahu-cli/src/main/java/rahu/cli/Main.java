@@ -12,7 +12,7 @@ import picocli.CommandLine.Command;
     version = "rahu 0.1.0",
     description = "Java agent harness with a configurable System One decision plane.",
     subcommands = { DemoCommand.class, ConfigCommand.class, RouteInspectCommand.class,
-        ChatCommand.class, EvalCommand.class,
+        ChatCommand.class, RunCommand.class, EvalCommand.class,
         // cli.md:13-14 document `rahu trace inspect` and `rahu replay`; neither
         // existed until AUDIT-2026-10-03-e/f, and ReplayEngine was unreachable
         // from src/main.

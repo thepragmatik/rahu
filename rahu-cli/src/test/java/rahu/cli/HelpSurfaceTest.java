@@ -33,17 +33,14 @@ class HelpSurfaceTest {
     /**
      * Every command cli.md:8-16 documents <em>that exists</em>.
      *
-     * <p>{@code run} (cli.md:11) is deliberately NOT in this list: it is documented
-     * and unimplemented as of AUDIT-2026-10-03-f. Naming this "every command
-     * cli.md documents" while quietly omitting one would make the test a claim the
-     * code does not support — the exact defect this file exists to prevent. The gap
-     * is asserted explicitly and visibly in {@link #runIsTheKnownUnimplementedGap()}
-     * instead, and adding {@code run} here when it lands will fail that test,
-     * which is the reminder to move it over.
+     * <p>Every command cli.md:8-16 documents, with no omissions. An earlier version
+     * of this list quietly left out {@code run} while claiming completeness, which is
+     * the same overclaim this file exists to prevent; the omission was then made
+     * explicit as a gap marker that failed when the gap closed.
      */
     private static final List<String> DOCUMENTED = List.of(
         "demo", "config", "config validate", "config show", "route", "route inspect",
-        "chat", "trace", "trace inspect", "replay", "eval");
+        "chat", "run", "trace", "trace inspect", "replay", "eval");
 
     private record Result(int exit, String out) {
     }
@@ -95,22 +92,6 @@ class HelpSurfaceTest {
                     + result.out());
             assertTrue(result.out().contains("Usage:"), label + " printed no usage");
         }
-    }
-
-    /**
-     * The one cli.md command that does not exist, asserted so the gap stays visible.
-     *
-     * <p>When {@code rahu run} is implemented this test FAILS, and the fix is to add
-     * "run" to {@link #DOCUMENTED} — not to relax the assertion. A gap marker that
-     * can be satisfied by weakening itself is worse than no marker.
-     */
-    @Test
-    @DisplayName("run is the known unimplemented gap (cli.md:11)")
-    void runIsTheKnownUnimplementedGap() {
-        var registered = new CommandLine(new Main()).getSubcommands();
-        assertTrue(!registered.containsKey("run"),
-            "rahu run now exists. Remove this gap marker and add \"run\" to"
-                + " DOCUMENTED so the help and registration checks cover it.");
     }
 
     @Test

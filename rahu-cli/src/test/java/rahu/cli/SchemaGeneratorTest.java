@@ -59,10 +59,7 @@ class SchemaGeneratorTest {
     }
 
     private static Path repoFile(String relative) {
-        Path moduleDir = Path.of(System.getProperty("user.dir"));
-        Path root = moduleDir.resolve("docs").toFile().exists()
-            ? moduleDir : moduleDir.getParent();
-        return root.resolve(relative);
+        return RepoFile.of(relative);
     }
 
     @Test

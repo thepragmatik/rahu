@@ -59,9 +59,43 @@ public final class OfflineTurnDriver {
     private final Supplier<java.util.Optional<String>> lines;
     private final boolean interactive;
 
+    /**
+     * Whether the answer is printed to stdout.
+     *
+     * <p>AUDIT-2026-10-03-g: {@code run --format json} requires one document on stdout
+     * and nothing else. The answer line cannot be filtered back out of a stream after it
+     * is printed, so suppression has to happen where the print happens.
+     */
+    private final boolean printAnswer;
+
+    /**
+     * When false, no input is ever treated as a slash command.
+     *
+     * <p>AUDIT-2026-10-03-g: {@code run} passed {@code line -> null} to mean "no
+     * commands", but a non-null handler still entered the slash branch, and the
+     * driver's null-means-continue path then SKIPPED the turn. {@code rahu run --prompt
+     * /status} therefore exited 0 having answered nothing, printed nothing and written
+     * no trace - indistinguishable from a run that never happened, and invisible
+     * because exit 0 reads as success.
+     *
+     * <p>An explicit flag rather than a null check: a null handler is a value a caller
+     * can supply by accident, and the accident is silent.
+     */
+    private final boolean slashCommandsEnabled;
+
     public OfflineTurnDriver(rahu.cli.config.RahuConfig cfg, SessionState session,
         Provenance provenance, Function<String, Integer> slashHandler, PrintWriter out,
         PrintWriter err, Supplier<java.util.Optional<String>> lines, boolean interactive) {
+        this(cfg, session, provenance, slashHandler, out, err, lines, interactive, true);
+    }
+
+    /** As above, with explicit control over whether the answer reaches stdout. */
+    public OfflineTurnDriver(rahu.cli.config.RahuConfig cfg, SessionState session,
+        Provenance provenance, Function<String, Integer> slashHandler, PrintWriter out,
+        PrintWriter err, Supplier<java.util.Optional<String>> lines, boolean interactive,
+        boolean printAnswer) {
+        this.printAnswer = printAnswer;
+        this.slashCommandsEnabled = slashHandler != null;
         this.cfg = cfg;
         this.session = session;
         this.provenance = provenance;
@@ -74,10 +108,42 @@ public final class OfflineTurnDriver {
 
     /** Runs to end-of-input or a slash-command exit; returns the process exit code. */
     public int run() {
+        return runLoop(true);
+    }
+
+    /**
+     * The run id this driver actually wrote a trace under, once a turn has begun.
+     *
+     * <p>Reported rather than reconstructed: {@code run --format json} needs the trace
+     * reference an operator will use to inspect the run, and inventing one from the
+     * session id would produce an id that resolves to nothing. Empty before the first
+     * turn, which is honest - nothing has been written yet.
+     */
+    public java.util.Optional<String> writtenRunId() {
+        return java.util.Optional.ofNullable(lastRunId);
+    }
+
+    private String lastRunId;
+
+    /**
+     * The same loop without chat's end-of-input banner.
+     *
+     * <p>{@code run} is a bounded task (cli.md:15), so it must not print
+     * "eof: chat ended..." or accept further lines. The banner is a chat affordance
+     * about a session that is ending, and printing it after one task implies a
+     * conversation that did not happen.
+     */
+    public int runWithoutEndOfInputBanner() {
+        return runLoop(false);
+    }
+
+    private int runLoop(boolean announceEnd) {
         var gate = new PrivacyGate();
         var traceConfig = TurnTrace.forSession(Path.of(cfg.trace().directory()), cfg, session);
 
-        err.println("rahu chat (offline) — /status /reset /exit, EOF to end");
+        if (announceEnd) {
+            err.println("rahu chat (offline) — /status /reset /exit, EOF to end");
+        }
         while (true) {
             if (interactive) {
                 err.print("> ");
@@ -94,7 +160,14 @@ public final class OfflineTurnDriver {
             if (line == null || line.isBlank()) {
                 continue;
             }
-            if (line.startsWith("/")) {
+            // A slash line is a COMMAND only when this driver was given a handler.
+            // `run` supplies none (cli.md:27 - a bounded task has no interactive
+            // commands), and must treat `/status` as the task TEXT. Returning null from
+            // a handler used to mean "keep going", which made the driver `continue`
+            // past the turn entirely: `rahu run --prompt /status` exited 0 having
+            // answered nothing and printed nothing. A no-handler driver must not enter
+            // this branch at all.
+            if (slashCommandsEnabled && line.startsWith("/")) {
                 Integer code = slashHandler.apply(line.strip());
                 if (code != null) {
                     return code;
@@ -136,12 +209,15 @@ public final class OfflineTurnDriver {
             // The answer must not echo the input. An admitted input may still be
             // sensitive, and printing it back is a second disclosure that the
             // privacy gate never got a chance to judge.
+            lastRunId = turn.runId();
             String answer = "offline: composed a bounded read-only answer."
                 + " (No model was called; fake provider path.)";
             try (var trace = traceConfig.begin(turn.runId(), session.turnCount())) {
                 turn.recordUser(ChatMessage.user(line));
                 turn.recordAssistant(ChatMessage.assistant(answer));
-                out.println(answer);
+                if (printAnswer) {
+                    out.println(answer);
+                }
                 turn.complete();
                 trace.runTerminated("ANSWER_COMPLETE", 0);
             } catch (rahu.cli.trace.TraceFailureException e) {
@@ -151,7 +227,9 @@ public final class OfflineTurnDriver {
                 return ExitCode.TRACE_INTEGRITY_FAILURE;
             }
         }
-        err.println("eof: chat ended; history is memory-only and does not survive exit");
+        if (announceEnd) {
+            err.println("eof: chat ended; history is memory-only and does not survive exit");
+        }
         return ExitCode.OK;
     }
 
