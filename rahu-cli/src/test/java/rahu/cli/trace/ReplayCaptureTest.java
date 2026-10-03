@@ -499,4 +499,61 @@ class ReplayCaptureTest {
         assertFalse(e.getMessage().contains("is required for replay"), e.getMessage());
         assertTrue(e.getMessage().contains("no capture at"), e.getMessage());
     }
+
+    // ------------------------------------------- F-8: a failure decision round-trips
+
+    @Test
+    @DisplayName("a FAILED decision is captured and read back with its kind intact")
+    void failureDecisionRoundTrips() throws IOException {
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE,
+            input("chosen_probability", 0.5),
+            Optional.of(new DecisionResult.Failure(
+                DecisionResult.FailureKind.UNREACHABLE, "decision transport failed")));
+        Path file = root.resolve(ReplayCapture.FILE);
+        String json = Files.readString(file);
+
+        assertTrue(json.contains("\"failureKind\" : \"UNREACHABLE\""),
+            "the kind must be recorded, or the trace cannot say what went wrong: " + json);
+        var read = ReplayCapture.read(root);
+        assertTrue(read.decision().orElseThrow().toString().contains("UNREACHABLE"),
+            "a definite transport failure must survive the round trip");
+    }
+
+    @Test
+    @DisplayName("a failure kind this build does not know degrades to UNKNOWN, not a crash")
+    void unknownFailureKindDegradesRatherThanCrashing() throws IOException {
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE,
+            input("chosen_probability", 0.5),
+            Optional.of(new DecisionResult.Failure(
+                DecisionResult.FailureKind.AMBIGUOUS, "decision transport failed")));
+        Path file = root.resolve(ReplayCapture.FILE);
+        // Simulates a capture written by a NEWER build, or a hand-edited one.
+        Files.writeString(file, Files.readString(file)
+            .replace("AMBIGUOUS", "SOME_KIND_FROM_THE_FUTURE"));
+
+        // Before AUDIT-2026-10-03-t this threw IllegalArgumentException out of a
+        // decode path whose other failures are reported as replay errors. An unnamed
+        // exception is not a diagnosis: the operator gets a stack trace.
+        var read = ReplayCapture.read(root);
+        assertTrue(read.decision().orElseThrow().toString().contains("UNKNOWN"),
+            "an unrecognised kind must degrade to the honest answer, not abort replay");
+    }
+
+    @Test
+    @DisplayName("an UNREACHABLE capture still replays as UNAVAILABLE, never as a guess")
+    void unreachableFailureNeverReplaysAsAGuess() throws IOException {
+        ReplayCapture.write(root, CANDIDATES, RoutingMode.ACTIVE,
+            input("chosen_probability", 0.5),
+            Optional.of(new DecisionResult.Failure(
+                DecisionResult.FailureKind.UNREACHABLE, "decision transport failed")));
+
+        var outcome = ReplayEngine.replay(ReplayCapture.read(root));
+
+        assertTrue(outcome.degraded(),
+            "a failed decision must degrade; it must not invent a route");
+        assertEquals(Optional.of("decision-failed"), outcome.fallbackCause(),
+            "the cause must be traceable, which is the whole point of the failure kind");
+        assertTrue(outcome.suggestedId().isEmpty(),
+            "a failed decision has no suggestion to record: " + outcome.suggestedId());
+    }
 }

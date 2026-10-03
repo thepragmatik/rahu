@@ -43,7 +43,30 @@ public sealed interface DecisionResult {
     }
 
     /** Typed failure kinds (routing.md fallback table). */
-    enum FailureKind { TIMEOUT, PROTOCOL_ERROR, MALFORMED, UNSUPPORTED, CANCELLED, UNKNOWN }
+    /**
+     * Why a decision could not be produced.
+     *
+     * <p>AUDIT-2026-10-03-t: {@link #UNREACHABLE} and {@link #AMBIGUOUS} exist because
+     * the adapter used to report every {@code IOException} as {@code TIMEOUT}, which
+     * merged two different facts. A refused connection proves the service never saw the
+     * request, so a retry cannot duplicate a billed call; a read timeout does not, so it
+     * might. systemone.md:48 requires exactly this: "Uncertain transport outcomes
+     * remain traceable even if the decision service is nominally side-effect-free
+     * because billing may have occurred."
+     *
+     * <p>The decision port has no ledger or cost accounting (the reservation in
+     * {@code LiveTurnDriver} covers generation only), so nothing downstream re-derives
+     * this distinction. It can only exist here, at the boundary.
+     */
+    enum FailureKind {
+        /** The request was never delivered: refused, unresolvable host, connect timeout. */
+        UNREACHABLE,
+        /** The request may have been processed and billed; a blind retry may duplicate it. */
+        AMBIGUOUS,
+        /** The service answered, but not with something this contract accepts. */
+        PROTOCOL_ERROR,
+        TIMEOUT, MALFORMED, UNSUPPORTED, CANCELLED, UNKNOWN
+    }
 
     /** Typed decision failure. */
     record Failure(FailureKind kind, String safeReason) implements DecisionResult {

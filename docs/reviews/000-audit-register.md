@@ -2441,3 +2441,97 @@ a grep-shaped mistake here would have been embarrassing and wrong.
 **A check at one level invites the assumption it applies at all levels.** A15 made the
 config loader look validated. The next question is never "is there a check?" but "at
 which depths, and is each one tested?"
+
+
+---
+
+## AUDIT-2026-10-03-t — F-8: every transport fault claimed to be a timeout
+
+Recorded-not-fixed in review 016 as needing "an enum addition and a spec change". This
+increment is that addition, and the review's stated reason for it was correct.
+
+### The defect
+
+`SystemOneHttpAdapter` caught `IOException | IllegalArgumentException` and returned
+`FailureKind.TIMEOUT` for all of them. That merged two different facts:
+
+| Fault | The service... | Retry safe? |
+|---|---|---|
+| connection refused / DNS unresolvable / **connect** timeout | provably never saw the request | yes |
+| read timeout | **may have processed it, and billed for it** | no |
+
+`HttpTimeoutException` and `HttpConnectTimeoutException` are the *same hierarchy* — the
+connect variant extends the timeout variant. Reporting both as `TIMEOUT` destroyed the
+only distinction a retry needs.
+
+### This was a spec violation, not a style question
+
+`systemone.md:48` already mandated it: *"Uncertain transport outcomes remain traceable
+even if the decision service is nominally side-effect-free because billing may have
+occurred."* The adapter merged the uncertain case with the certain one. The spec was
+right and the code was wrong.
+
+**And my earlier register claim about this finding was itself wrong.** I had written that
+"the ledger handles ambiguity via `markUncertain` so cost stays sound — only the
+diagnostic is coarse". I checked before relying on it: **the decision port has no ledger
+at all.** `grep` for `ledger.(reserve|settle|markUncertain)` in `rahu-cli/src/main`
+returns nothing, and the reservation in `LiveTurnDriver.account` covers *generation*
+usage only. So nothing downstream re-derives this distinction for decisions; the
+boundary is the only place it can exist. The claim was carried over from the generation
+path and did not survive checking.
+
+### The fix
+
+`UNREACHABLE` (provably undelivered) and `AMBIGUOUS` (may have been delivered),
+classified by exception type. The unrecognised-fault catch-all returns `AMBIGUOUS`
+deliberately: an unproven delivery is not a proven non-delivery. `systemone.md` updated
+to state the rule, since it is now contract rather than accident.
+
+`safeReason` names the exception **type**, never its text — verified in `jshell` that
+`UnknownHostException.getMessage()` embeds the hostname
+(`"no-such-host.invalid: nodename nor servename..."`), so echoing `getMessage()` would
+leak the endpoint into model-visible output.
+
+### Catch order is load-bearing, and it is pinned
+
+`HttpConnectTimeoutException` extends `HttpTimeoutException`. Testing the supertype
+first silently reclassifies every connect timeout as ambiguous — the exact confusion the
+enum was added to remove. A mutation test pins the order.
+
+### Also fixed: a `Failure` decision was never covered by any test
+
+`ReplayCapture.decodeDecision` read `FailureKind.valueOf(...)` bare. **No test in the
+repo ever wrote a `Failure` decision to a capture**, so the branch was untested. A
+capture from a newer build (or hand-edited) threw `IllegalArgumentException` out of a
+decode path whose every other failure is reported as a replay error — an operator gets a
+stack trace instead of a diagnosis. Now degrades to `UNKNOWN`, with three tests including
+a mutation check that restores the bare `valueOf` and confirms the crash returns.
+
+### 6 mutations, all caught
+
+| Mutation | Result |
+|---|---|
+| collapse to one `TIMEOUT` (**the original defect**) | CAUGHT (F=3) |
+| supertype tested before `HttpConnectTimeoutException` | CAUGHT (F=3) |
+| catch-all optimistically claims never-sent | CAUGHT (F=1) |
+| definite branch lost | CAUGHT (F=4) |
+| `safeReason` echoes raw message (leaks host) | CAUGHT (F=1) |
+| `safeReason` blank | CAUGHT (F=1) |
+
+### The failure that mattered: my mutation harness reported 6/6 SURVIVED
+
+The tests were green and the first mutation run said **every mutation survived** —
+including the original defect. I nearly concluded the code was untestable.
+
+The tests were fine. **My harness was broken**: it tested
+`"Failures: 0, Errors: 0" in output`, and surefire prints its summary line twice —
+once as `[INFO] Tests run: 4, Failures: 3, Errors: 0` — so the substring
+`Errors: 0` matched a **failing** run. Six mutations, six false "survived".
+
+Parsing the totals line explicitly instead of substring-matching turned 6/6 survived
+into 6/6 caught. I then found two genuine survivors hidden underneath (an untested
+catch-all branch and a vacuous leak assertion) and fixed both.
+
+This is the second increment in a row where a green test suite was not evidence.
+**A test result you have not seen fail is not a passing test** — and neither is a
+mutation result produced by a harness you have not seen catch something.

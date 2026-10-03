@@ -322,8 +322,20 @@ public final class ReplayCapture {
                 rawConfidence, node.path("confidenceSemantics").asText("captured")));
         }
         if ("Failure".equals(kind)) {
-            return Optional.of(new DecisionResult.Failure(
-                DecisionResult.FailureKind.valueOf(node.path("failureKind").asText("UNKNOWN")),
+            // A bare valueOf threw IllegalArgumentException on any kind this build does
+            // not know - a capture written by a newer build, or a hand-edited one. The
+            // surrounding decode path converts parse problems into a reported replay
+            // error, and an unnamed exception is not one: the operator gets a stack
+            // trace instead of a diagnosis. Unknown degrades to UNKNOWN, which is the
+            // honest answer ("we cannot say what happened"), not a crash.
+            DecisionResult.FailureKind failureKind;
+            try {
+                failureKind = DecisionResult.FailureKind.valueOf(
+                    node.path("failureKind").asText("UNKNOWN"));
+            } catch (IllegalArgumentException e) {
+                failureKind = DecisionResult.FailureKind.UNKNOWN;
+            }
+            return Optional.of(new DecisionResult.Failure(failureKind,
                 node.path("safeReason").asText("captured failure")));
         }
         throw new IllegalArgumentException("unknown captured decision kind: " + kind);

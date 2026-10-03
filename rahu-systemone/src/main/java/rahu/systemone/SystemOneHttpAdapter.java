@@ -119,9 +119,7 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
                 new DecisionResult.Failure(DecisionResult.FailureKind.CANCELLED,
                     "decision call interrupted"));
         } catch (IOException | IllegalArgumentException e) {
-            return failuresFor(questions,
-                new DecisionResult.Failure(DecisionResult.FailureKind.TIMEOUT,
-                    "decision transport failed"));
+            return failuresFor(questions, transportFailure(e));
         }
 
         if (response.statusCode() != 200) {
@@ -136,6 +134,44 @@ public final class SystemOneHttpAdapter implements DecisionEngine {
         }
 
         return parseAnswers(response.body(), questions);
+    }
+
+    /**
+     * Classifies a transport fault by whether the service could have seen the request.
+     *
+     * <p>AUDIT-2026-10-03-t. This used to return {@code TIMEOUT} for every
+     * {@code IOException}, which merged two facts a retry must not confuse: a refused
+     * connection proves the request was never delivered, a read timeout does not.
+     * systemone.md:48 requires the uncertain case stay traceable "because billing may
+     * have occurred".
+     *
+     * <p>Catch order is load-bearing: {@link java.net.http.HttpConnectTimeoutException}
+     * extends {@link java.net.http.HttpTimeoutException}, so testing the supertype first
+     * would classify every connect timeout as ambiguous and lose the distinction this
+     * method exists to keep.
+     *
+     * <p>The message names the exception TYPE, never its text: JDK IO messages embed the
+     * host and port, and {@code safeReason} must not carry values into model-visible
+     * output (the same rule {@code PathBoundary} follows).
+     */
+    static DecisionResult.Failure transportFailure(Exception e) {
+        DecisionResult.FailureKind kind;
+        if (e instanceof java.net.http.HttpConnectTimeoutException
+                || e instanceof java.net.ConnectException
+                || e instanceof java.net.UnknownHostException) {
+            // Nothing was ever sent, so a retry cannot duplicate a billed call.
+            kind = DecisionResult.FailureKind.UNREACHABLE;
+        } else if (e instanceof java.net.http.HttpTimeoutException
+                || e instanceof java.net.SocketTimeoutException
+                || e instanceof java.io.InterruptedIOException) {
+            kind = DecisionResult.FailureKind.AMBIGUOUS;
+        } else {
+            // An unrecognised fault is treated as the dangerous case on purpose: we
+            // cannot prove the request was not delivered, so we must not claim it was.
+            kind = DecisionResult.FailureKind.AMBIGUOUS;
+        }
+        return new DecisionResult.Failure(kind,
+            "decision transport failed (" + e.getClass().getSimpleName() + ")");
     }
 
     /** One typed failure per question, keyed by id (batch order preserved). */
