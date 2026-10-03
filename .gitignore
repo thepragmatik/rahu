@@ -26,3 +26,6 @@ dependency-reduced-pom.xml
 .project
 .settings/
 bin/
+
+# Hermes local working notes (agent plans); not project content
+.hermes/
