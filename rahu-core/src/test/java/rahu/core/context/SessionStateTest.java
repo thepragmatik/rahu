@@ -74,6 +74,50 @@ class SessionStateTest {
     }
 
     @Test
+    @DisplayName("a REFUSED reset destroys nothing: the guard runs before the mutation")
+    void refusedResetLeavesHistoryIntact() {
+        // The guard was AFTER the mutation:
+        //
+        //     history.clear();
+        //     lastFailure = null;
+        //     if (active != null && !active.completed) {
+        //         throw new IllegalStateException(...);
+        //     }
+        //
+        // So the method cleared the conversation and the failure record, THEN
+        // refused. ChatCommand catches the throw and prints "reset refused: cannot
+        // reset during an active turn" -- telling the operator the reset did not
+        // happen, after it had already happened. That is the reported-vs-actual
+        // shape from AUDIT-j, and it is the one that loses data: the operator
+        // believes the conversation is still there.
+        var session = new SessionState("s-1", 20, usd("3.00"));
+
+        SessionState.RunHandle first = session.beginTurn();
+        first.recordUser(ChatMessage.user("first question"));
+        first.recordAssistant(ChatMessage.assistant("first answer"));
+        first.complete();
+
+        SessionState.RunHandle active = session.beginTurn();
+        active.recordUser(ChatMessage.user("in flight"));
+        // No complete(): the turn is still active, so reset must be REFUSED.
+
+        assertThrows(IllegalStateException.class, session::resetConversation,
+            "a reset during an active turn is refused");
+
+        assertEquals(2, session.history().size(),
+            "a REFUSED reset must not clear the conversation - the operator was told "
+                + "it did not happen, and it must not have happened");
+        assertEquals("first question", session.history().get(0).content());
+        assertEquals(1, session.turnCount(), "and the count is untouched either way");
+
+        // The state must also be unchanged after the turn finally ENDS, which is
+        // the only point at which a reset is legitimate.
+        active.complete();
+        session.resetConversation();
+        assertEquals(0, session.history().size(), "once ended, reset does clear");
+    }
+
+    @Test
     @DisplayName("A32: a failed turn keeps the user request and failure, never a partial answer")
     void failedTurnKeepsRequestNotPartialAnswer() {
         var session = new SessionState("s-1", 20, usd("3.00"));

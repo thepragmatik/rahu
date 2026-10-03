@@ -71,13 +71,33 @@ public final class SessionState {
         return Optional.ofNullable(lastFailure);
     }
 
-    /** A32: clear conversational content; counts and money are untouchable. */
+    /**
+     * A32: clear conversational content; counts and money are untouchable.
+     *
+     * <p>The guard runs FIRST, and that ordering is the whole point. It used to run
+     * last:
+     *
+     * <pre>{@code
+     * history.clear();
+     * lastFailure = null;
+     * if (active != null && !active.completed) { throw ... }
+     * }</pre>
+     *
+     * which cleared the conversation and the failure record and THEN refused.
+     * {@code ChatCommand} catches the throw and prints "reset refused: cannot reset
+     * during an active turn" -- so the operator was told the reset had not happened
+     * after it had already wiped the conversation. Refusing an operation while
+     * applying part of it is the reported-vs-actual shape from AUDIT-j, and this
+     * instance loses data: a refused reset silently destroyed the transcript.
+     *
+     * <p>A refusal must therefore be total. Validate before mutating.
+     */
     public synchronized void resetConversation() {
-        history.clear();
-        lastFailure = null;
         if (active != null && !active.completed) {
             throw new IllegalStateException("cannot reset during an active turn");
         }
+        history.clear();
+        lastFailure = null;
     }
 
     private void onTurnComplete(RunHandle handle, ChatMessage user, ChatMessage assistant) {

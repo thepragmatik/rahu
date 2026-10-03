@@ -1839,3 +1839,110 @@ already in this register from AUDIT-k; I broke it three times in one increment.
 - `isTextAnswer` / `structuredOutputRequired`: future scaffolding (AUDIT-l items 3-4).
 - `/reset` turn-count retention: recorded as an unverified question in AUDIT-m.
 
+---
+
+## AUDIT-2026-10-03-o — a refusal that applied the mutation anyway
+
+Closed the AUDIT-m open question first, then found a defect by reading the code
+instead of probing it.
+
+### The AUDIT-m question: `/reset` turn-count retention — NO DEFECT
+
+cli.md:23 requires `/reset` to "clear content/continuation, retain ledger/count", and
+context.md:52 repeats it. I had recorded this as an *unverified question* last
+increment because I was inventing a probe rather than reading the source. Read first
+this time, which is what I should have done then:
+
+```java
+public synchronized void resetConversation() {
+    history.clear();
+    lastFailure = null;
+    if (active != null && !active.completed) { throw ... }
+}
+```
+
+`turnCount` and `ledger` are not touched. Verified live on the packaged binary, not
+just in a unit test:
+
+```
+turns=0 ... /reset ... turns=1, settled=0 USD, uncertain=0, remaining=3.00
+```
+
+**The count survives reset.** Question closed, no change needed.
+
+### The defect: the guard ran AFTER the mutation
+
+The method cleared `history` and `lastFailure`, and *then* refused if a turn was
+active. `ChatCommand` catches the throw and prints:
+
+```
+reset refused: cannot reset during an active turn
+```
+
+So a **refused** reset had already wiped the conversation and the failure record.
+The operator is told the reset did not happen, after it had. This is the
+reported-vs-actual shape from AUDIT-j, and it is the variant that loses data: not a
+misreported counter, a destroyed transcript with a reassurance attached.
+
+### Why it was never observed
+
+`orchestration.md:11` — "One driver mutates run state; one active turn owns a session.
+All paid requests are sequential." The CLI reads a line, runs the turn to completion,
+*then* reads the next line, so `active` is always null when `/reset` arrives. The
+refusal path is **unreachable through the CLI**. The defect is only in the class's
+contract, which is still a contract: the method's name and its javadoc promise one
+thing and the implementation did another, and the next caller need not be the CLI.
+
+I am recording the reachability honestly rather than inflating it. It is a real
+defect with no current trigger — not a live data-loss bug.
+
+### The fix
+
+Guard first, mutate after. Validate before mutating, so a refusal is total.
+
+### Mutations (all restored verbatim)
+
+| Mutation | Failures |
+|---|---|
+| guard moved back after the mutation (the original defect) | 1 |
+| guard deleted entirely (reset always allowed) | 1 |
+| guard also refuses a *completed* turn (over-refuses) | **0 — equivalent** |
+
+The surviving mutant is genuinely equivalent, and I checked rather than assumed.
+`active` is assigned in exactly three places: set in `beginTurn`, and nulled at lines
+107 and 114 inside `onTurnComplete`/`onTurnFailed` — the same `complete()`/`fail()`
+call that sets `completed = true`. So `active != null` implies `!active.completed`,
+and dropping the second conjunct cannot change behaviour. Equivalence established
+by reading the assignments, which is the standard I set after the `+Infinity`
+episode.
+
+### Two adjacent suspicions, both checked and both NOT defects
+
+1. **`onTurnComplete`/`onTurnFailed` are not `synchronized`**, though every public
+   accessor is, and they mutate `turnCount`, `history` and `active`. That is a real
+   inconsistency — but `grep` for `new Thread|Executors|parallelStream|CompletableFuture`
+   across both `src/main` trees returns **zero** thread spawns, and
+   `orchestration.md:11` mandates serial paid requests. Latent, not live. Recorded,
+   not fixed: there is no concurrent caller to fix it for, and adding `synchronized`
+   to code that is contractually single-threaded would imply a guarantee the spec does
+   not ask for.
+2. **`fail()` before `recordUser` yields `FailedTurn` with a null `userRequest`**,
+   since `onTurnFailed` stores whatever `user` currently holds. `grep` for
+   `lastFailedTurn` across `src/main` returns exactly **one** hit — the declaration
+   itself. No consumer, so nothing dereferences it. Latent, recorded, not fixed.
+
+### 462 tests green (159 core / 14 openrouter / 30 systemone / 259 cli)
+
+### The lesson, which is the same one I broke last increment
+
+Last increment I recorded: *"I stopped myself mid-way through checking `/reset` — I
+was inventing a probe rather than testing a hypothesis I had evidence for."* The
+correction was not to stop; it was to **read the source first**. That is what I did
+this time, and it took ninety seconds instead of a speculative harness — and it is
+what turned "an open question" into "an answer plus a real defect three lines away."
+
+Also: I again passed a shell script where `subprocess.run` wanted an argument list,
+and got a `FileNotFoundError` on the script's own text. Same class as the
+`write()`/`read()` signature guess from last increment — assuming an API's shape
+instead of checking it.
+
